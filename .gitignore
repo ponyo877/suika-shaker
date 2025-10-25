@@ -18,6 +18,10 @@ go.work.sum
 # Project-specific executable
 suika-shaker
 
+# WebAssembly build artifacts
+main.wasm
+wasm_exec.js
+
 # Debug and log files
 debug.log
 *.log

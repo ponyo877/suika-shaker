@@ -130,6 +130,7 @@ func (g *Game) drop() {
 		g.next.kind = assets.Kind(rand.Intn(2) + int(assets.Min))
 	}
 }
+
 func (g *Game) drawBackground(screen *ebiten.Image) {
 	screen.Fill(color.RGBA{0, 0, 0, 255})
 	screen.DrawImage(bgImage, nil)
