@@ -26,24 +26,107 @@
             display: block;
             margin: 0 auto;
         }
+
+        #permissionBtn {
+            padding: 15px 30px;
+            font-size: 18px;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            margin: 20px auto;
+            display: none;
+        }
+
+        #permissionBtn:hover {
+            background-color: #45a049;
+        }
     </style>
 </head>
 
 <body>
     <div id="gameContainer">
         <div id="loading" style="color: white;">Loading...</div>
+        <button id="permissionBtn">Enable Motion Sensor</button>
     </div>
 
     <script src="wasm_exec.js"></script>
     <script>
+        let wasmReady = false;
+        const isWithRequestPermission =
+            typeof unknownDeviceMotionEvent === 'function' &&
+            unknownDeviceMotionEvent !== null &&
+            'requestPermission' in unknownDeviceMotionEvent &&
+            typeof unknownDeviceMotionEvent.requestPermission === 'function'
+        const isIOS = isWithRequestPermission;
+
         const go = new Go();
         WebAssembly.instantiateStreaming(fetch("main.wasm"), go.importObject).then((result) => {
             document.getElementById("loading").style.display = "none";
+            wasmReady = true;
             go.run(result.instance);
+
+            // Show permission button for iOS or if permission is needed
+            if (typeof DeviceMotionEvent.requestPermission === 'function') {
+                document.getElementById("permissionBtn").style.display = "block";
+            } else {
+                // For non-iOS devices, start listening immediately
+                startMotionListener();
+            }
+
+            // Setup tap event
+            setupTapEvent();
         }).catch((err) => {
             console.error("Failed to load WASM:", err);
             document.getElementById("loading").innerHTML = "Failed to load game. Please refresh the page.";
         });
+
+        // Request permission for iOS
+        document.getElementById("permissionBtn").addEventListener("click", async () => {
+            if (typeof DeviceMotionEvent.requestPermission === 'function') {
+                try {
+                    const permission = await DeviceMotionEvent.requestPermission();
+                    if (permission === 'granted') {
+                        document.getElementById("permissionBtn").style.display = "none";
+                        startMotionListener();
+                    } else {
+                        alert('Motion sensor permission denied');
+                    }
+                } catch (error) {
+                    console.error('Permission request failed:', error);
+                }
+            }
+        });
+
+        function startMotionListener() {
+            window.addEventListener('devicemotion', (event) => {
+                if (!wasmReady) return;
+                if (!event.accelerationIncludingGravity) return;
+
+                let x = event.accelerationIncludingGravity.x || 0;
+                let y = event.accelerationIncludingGravity.y || 0;
+                let z = event.accelerationIncludingGravity.z || 0;
+
+                // iOS has inverted values
+                if (isIOS) {
+                    x = -x;
+                    y = -y;
+                    z = -z;
+                }
+
+                // Send to Go
+                if (window.setAcceleration) {
+                    window.setAcceleration(x, y, z);
+                }
+
+                // Debug display
+                const info = document.getElementById("sensorInfo");
+                if (info) {
+                    info.textContent = `X: ${x.toFixed(2)}, Y: ${y.toFixed(2)}, Z: ${z.toFixed(2)}`;
+                }
+            });
+        }
     </script>
 </body>
 

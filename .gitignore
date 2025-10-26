@@ -22,6 +22,11 @@ suika-shaker
 main.wasm
 wasm_exec.js
 
+# HTTPS server artifacts
+https-server
+server.crt
+server.key
+
 # Debug and log files
 debug.log
 *.log

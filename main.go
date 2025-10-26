@@ -25,6 +25,7 @@ var (
 	whiteSubImage = ebiten.NewImage(3, 3)
 	score         = 0
 	hiscore       = 0
+	currentGame   *Game
 )
 
 const (
@@ -35,10 +36,11 @@ const (
 )
 
 type Game struct {
-	count  int
-	space  *cp.Space
-	drawer *ebitencp.Drawer
-	next   next
+	count     int
+	dropCount int // Counter for auto-dropping fruits every second
+	space     *cp.Space
+	drawer    *ebitencp.Drawer
+	next      next
 
 	debug bool
 }
@@ -52,6 +54,29 @@ type next struct {
 
 func (g *Game) Update() error {
 	g.count++
+	g.dropCount++
+
+	// Auto-drop fruit every second (60 frames)
+	if g.dropCount >= 60 {
+		g.dropAuto()
+		g.dropCount = 0
+	}
+
+	// Update gravity based on acceleration sensor
+	ax, ay, _ := getAcceleration()
+	// Acceleration sensor measures device acceleration, but gravity acts opposite
+	// When device tilts right, sensor shows left acceleration, but gravity pulls right
+	// Scale by ~50 for good game physics (typical mobile acceleration is ~9.8 m/s^2)
+	gravityX := ax * 50
+	gravityY := -ay * 50
+
+	// If no acceleration data (native build or sensor not active), use default gravity
+	if ax == 0 && ay == 0 {
+		gravityY = 500
+	}
+
+	g.space.SetGravity(cp.Vector{X: gravityX, Y: gravityY})
+
 	g.space.EachBody(func(body *cp.Body) {
 		if body.Position().Y < screenHeight-containerHeight {
 			g.space.EachShape(func(shape *cp.Shape) {
@@ -131,6 +156,25 @@ func (g *Game) drop() {
 	}
 }
 
+func (g *Game) dropAuto() {
+	// Generate random x position for dropping (between 50 and screenWidth-50 to avoid walls)
+	randomX := float64(rand.Intn(screenWidth-100) + 50)
+
+	k := g.next.kind
+	addShapeOptions := addShapeOptions{
+		kind:  g.next.kind,
+		pos:   cp.Vector{X: randomX, Y: g.next.y},
+		angle: g.next.angle,
+	}
+	g.space.AddPostStepCallback(addShapeCallback, k, addShapeOptions)
+
+	// Set next fruit with random position
+	g.next.kind = assets.Kind(rand.Intn(2) + int(assets.Min))
+	g.next.x = float64(rand.Intn(screenWidth-100) + 50)
+	g.next.y = float64(rand.Intn(screenHeight-100) + 50)
+	g.next.angle = rand.Float64() * 2 * math.Pi
+}
+
 func (g *Game) drawBackground(screen *ebiten.Image) {
 	screen.Fill(color.RGBA{0, 0, 0, 255})
 	screen.DrawImage(bgImage, nil)
@@ -185,9 +229,13 @@ func init() {
 }
 
 func main() {
+	// Setup WASM callbacks before starting the game
+	setupWASMCallbacks()
+
 	// chipmunk init
 	space := cp.NewSpace()
 	space.Iterations = 30
+	// Initial gravity will be set in Update() based on sensor data
 	space.SetGravity(cp.Vector{X: 0, Y: 500})
 	space.SleepTimeThreshold = 0.5
 	space.SetDamping(1)
@@ -218,6 +266,9 @@ func main() {
 	game.drawer.FlipYAxis = true
 	game.next = next{kind: assets.Grape, x: screenWidth / 2, y: screenHeight - containerHeight + 10, angle: 0}
 
+	// Set global game reference for WASM callbacks
+	currentGame = game
+
 	ebiten.SetWindowSize(screenWidth, screenHeight)
 	ebiten.SetWindowTitle("Suika Shaker")
 	if err := ebiten.RunGame(game); err != nil {
@@ -240,6 +291,10 @@ func addFruit(space *cp.Space, k assets.Kind, position cp.Vector, angle float64)
 	fruit.SetElasticity(0.2)
 	fruit.SetFriction(0.9)
 	fruit.SetCollisionType(cp.CollisionType(k))
+
+	// Ensure collision detection is active immediately by reindexing the body's shapes
+	body.Activate()
+	space.ReindexShape(fruit)
 }
 
 func (g *Game) drawFruit(screen *ebiten.Image, kind assets.Kind, x, y, angle float64) {
