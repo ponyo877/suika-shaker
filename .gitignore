@@ -18,9 +18,6 @@ go.work.sum
 # Project-specific executable
 suika-shaker
 
-# WebAssembly build artifacts
-main.wasm
-wasm_exec.js
 
 # HTTPS server artifacts
 https-server
