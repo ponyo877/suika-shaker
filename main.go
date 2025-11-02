@@ -35,7 +35,6 @@ const (
 	containerHeight  = 800
 	paddingBottom    = 0
 	maxSpawnFailures = 3  // Maximum consecutive spawn failures before game over
-	maxFruitCount    = 80 // Maximum number of fruits on screen (safety net)
 	spawnCheckRadius = 40 // Collision check radius for spawn position (Grape radius)
 )
 
@@ -85,17 +84,18 @@ func (g *Game) Update() error {
 
 	g.space.SetGravity(cp.Vector{X: gravityX, Y: gravityY})
 
-	// Check for game over condition: too many fruits (safety net)
-	if g.countFruits() > maxFruitCount {
-		if !g.gameOver {
-			g.gameOver = true
+	g.space.EachBody(func(body *cp.Body) {
+		x, y := body.Position().X, body.Position().Y
+		if 0 > x || x > float64(screenWidth) || 0 > y || y > float64(screenHeight) {
+			if !g.gameOver {
+				g.gameOver = true
+			}
+			if !g.gameOverSE {
+				g.gameOverSE = true
+				sound.PlayGameOver()
+			}
 		}
-		if !g.gameOverSE {
-			g.gameOverSE = true
-			sound.PlayGameOver()
-			sound.StopBackgroundMusic()
-		}
-	}
+	})
 
 	// Handle game over state
 	if g.gameOver {
@@ -106,6 +106,8 @@ func (g *Game) Update() error {
 		})
 		hiscore = int(math.Max(float64(score), float64(hiscore)))
 		score = 0
+		g.gameOver = false
+		g.gameOverSE = false
 	}
 
 	g.next.angle += 0.01
