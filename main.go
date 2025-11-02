@@ -30,18 +30,22 @@ var (
 )
 
 const (
-	screenWidth     = 480
-	screenHeight    = 800
-	containerHeight = 800
-	paddingBottom   = 0
+	screenWidth      = 480
+	screenHeight     = 800
+	containerHeight  = 800
+	paddingBottom    = 0
+	maxSpawnFailures = 3  // Maximum consecutive spawn failures before game over
+	maxFruitCount    = 80 // Maximum number of fruits on screen (safety net)
+	spawnCheckRadius = 40 // Collision check radius for spawn position (Grape radius)
 )
 
 type Game struct {
-	count     int
-	dropCount int // Counter for auto-dropping fruits every second
-	space     *cp.Space
-	drawer    *ebitencp.Drawer
-	next      next
+	count          int
+	dropCount      int // Counter for auto-dropping fruits every second
+	spawnFailCount int // Counter for consecutive spawn failures
+	space          *cp.Space
+	drawer         *ebitencp.Drawer
+	next           next
 
 	debug      bool
 	gameOver   bool
@@ -80,25 +84,29 @@ func (g *Game) Update() error {
 
 	g.space.SetGravity(cp.Vector{X: gravityX, Y: gravityY})
 
-	g.space.EachBody(func(body *cp.Body) {
-		if body.Position().Y < screenHeight-containerHeight {
-			if !g.gameOver {
-				g.gameOver = true
-			}
-			if !g.gameOverSE {
-				g.gameOverSE = true
-				sound.PlayGameOver()
-			}
-			g.space.EachShape(func(shape *cp.Shape) {
-				if shape.Body().UserData != nil {
-					g.space.AddPostStepCallback(removeShapeCallback, shape, nil)
-				}
-				hiscore = int(math.Max(float64(score), float64(hiscore)))
-				score = 0
-			})
-			return
+	// Check for game over condition: too many fruits (safety net)
+	if g.countFruits() > maxFruitCount {
+		if !g.gameOver {
+			g.gameOver = true
 		}
-	})
+		if !g.gameOverSE {
+			g.gameOverSE = true
+			sound.PlayGameOver()
+			sound.StopBackgroundMusic()
+		}
+	}
+
+	// Handle game over state
+	if g.gameOver {
+		g.space.EachShape(func(shape *cp.Shape) {
+			if shape.Body().UserData != nil {
+				g.space.AddPostStepCallback(removeShapeCallback, shape, nil)
+			}
+		})
+		hiscore = int(math.Max(float64(score), float64(hiscore)))
+		score = 0
+	}
+
 	g.next.angle += 0.01
 	if inpututil.IsKeyJustPressed(ebiten.KeySpace) {
 		g.drop()
@@ -168,12 +176,34 @@ func (g *Game) drop() {
 
 func (g *Game) dropAuto() {
 	// Generate random x position for dropping (between 50 and screenWidth-50 to avoid walls)
-	randomX := float64(rand.Intn(screenWidth-100) + 50)
+	// randomX := float64(rand.Intn(screenWidth-100) + 50)
+	// randomY := g.next.y
+
+	// Check if we can spawn at this position
+	if !g.canSpawnAt(g.next.x, g.next.y, spawnCheckRadius) {
+		// Cannot spawn - increment fail counter
+		g.spawnFailCount++
+		if g.spawnFailCount >= maxSpawnFailures {
+			// Trigger game over
+			if !g.gameOver {
+				g.gameOver = true
+			}
+			if !g.gameOverSE {
+				g.gameOverSE = true
+				sound.PlayGameOver()
+				sound.StopBackgroundMusic()
+			}
+		}
+		return
+	}
+
+	// Reset fail counter on successful spawn
+	g.spawnFailCount = 0
 
 	k := g.next.kind
 	addShapeOptions := addShapeOptions{
 		kind:  g.next.kind,
-		pos:   cp.Vector{X: randomX, Y: g.next.y},
+		pos:   cp.Vector{X: g.next.x, Y: g.next.y},
 		angle: g.next.angle,
 	}
 	g.space.AddPostStepCallback(addShapeCallback, k, addShapeOptions)
@@ -387,4 +417,37 @@ func BeginFunc(arb *cp.Arbiter, space *cp.Space, data interface{}) bool {
 	}
 	space.AddPostStepCallback(addShapeCallback, k, addShapeOptions)
 	return false
+}
+
+// canSpawnAt checks if a fruit can be spawned at the given position without colliding
+func (g *Game) canSpawnAt(x, y, radius float64) bool {
+	// Create a bounding box around the spawn position
+	bb := cp.BB{
+		L: x - radius,
+		B: y - radius,
+		R: x + radius,
+		T: y + radius,
+	}
+
+	// Check if any shapes overlap with this bounding box
+	hasCollision := false
+	g.space.BBQuery(bb, cp.ShapeFilter{}, func(shape *cp.Shape, data interface{}) {
+		// Skip static bodies (walls)
+		if shape.Body().UserData != nil {
+			hasCollision = true
+		}
+	}, nil)
+
+	return !hasCollision
+}
+
+// countFruits counts the total number of fruits currently on screen
+func (g *Game) countFruits() int {
+	count := 0
+	g.space.EachBody(func(body *cp.Body) {
+		if body.UserData != nil {
+			count++
+		}
+	})
+	return count
 }
