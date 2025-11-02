@@ -29,6 +29,8 @@ var (
 	gameoverData     []byte
 	joinData         []byte
 	suikajoinData    []byte
+
+	Muted bool = false // Global mute state
 )
 
 func init() {
@@ -66,20 +68,39 @@ func decodeToBytes(wavData []byte) []byte {
 	return data
 }
 
+// SetMuted sets the global mute state
+func SetMuted(muted bool) {
+	Muted = muted
+	if muted {
+		StopBackgroundMusic()
+	} else {
+		StartBackgroundMusic()
+	}
+}
+
 // PlayGameOver plays the game over sound
 func PlayGameOver() {
+	if Muted {
+		return
+	}
 	player := AudioContext.NewPlayerF32FromBytes(gameoverData)
 	player.Play()
 }
 
 // PlayJoin plays the join sound when fruits merge
 func PlayJoin() {
+	if Muted {
+		return
+	}
 	player := AudioContext.NewPlayerF32FromBytes(joinData)
 	player.Play()
 }
 
 // PlaySuikaJoin plays the special sound when melon or watermelon merge
 func PlaySuikaJoin() {
+	if Muted {
+		return
+	}
 	player := AudioContext.NewPlayerF32FromBytes(suikajoinData)
 	player.Play()
 }

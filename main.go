@@ -50,6 +50,7 @@ type Game struct {
 	debug      bool
 	gameOver   bool
 	gameOverSE bool // Flag to ensure game over sound plays only once
+	muted      bool // Mute state for audio
 }
 
 type next struct {
@@ -117,6 +118,33 @@ func (g *Game) Update() error {
 	if ebiten.IsKeyPressed(ebiten.KeyArrowLeft) {
 		g.moveLeft()
 	}
+
+	// Handle speaker button click/touch
+	const (
+		buttonX    = screenWidth - 50
+		buttonY    = 10
+		buttonSize = 40
+	)
+
+	// Mouse click detection
+	if inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonLeft) {
+		x, y := ebiten.CursorPosition()
+		if x >= buttonX && x <= buttonX+buttonSize && y >= buttonY && y <= buttonY+buttonSize {
+			g.muted = !g.muted
+			sound.SetMuted(g.muted)
+		}
+	}
+
+	// Touch detection (for mobile/WASM)
+	touchIDs := inpututil.AppendJustPressedTouchIDs(nil)
+	for _, id := range touchIDs {
+		x, y := ebiten.TouchPosition(id)
+		if x >= buttonX && x <= buttonX+buttonSize && y >= buttonY && y <= buttonY+buttonSize {
+			g.muted = !g.muted
+			sound.SetMuted(g.muted)
+		}
+	}
+
 	g.drawer.HandleMouseEvent(g.space)
 	g.space.Step(1 / 60.0)
 	return nil
@@ -142,6 +170,9 @@ func (g *Game) Draw(screen *ebiten.Image) {
 		score,
 		hiscore,
 	))
+
+	// Draw speaker/mute button in top-right corner
+	g.drawSpeakerButton(screen)
 }
 
 func (g *Game) Layout(outsideWidth, outsideHeight int) (int, int) {
@@ -421,24 +452,21 @@ func BeginFunc(arb *cp.Arbiter, space *cp.Space, data interface{}) bool {
 
 // canSpawnAt checks if a fruit can be spawned at the given position without colliding
 func (g *Game) canSpawnAt(x, y, radius float64) bool {
-	// Create a bounding box around the spawn position
-	bb := cp.BB{
-		L: x - radius,
-		B: y - radius,
-		R: x + radius,
-		T: y + radius,
+	// Use PointQueryNearest to find the nearest shape within radius
+	info := g.space.PointQueryNearest(cp.Vector{X: x, Y: y}, radius, cp.ShapeFilter{})
+
+	// If no shape found within radius, position is clear
+	if info.Shape == nil {
+		return true
 	}
 
-	// Check if any shapes overlap with this bounding box
-	hasCollision := false
-	g.space.BBQuery(bb, cp.ShapeFilter{}, func(shape *cp.Shape, data interface{}) {
-		// Skip static bodies (walls)
-		if shape.Body().UserData != nil {
-			hasCollision = true
-		}
-	}, nil)
+	// Check if the nearest shape is a fruit (not a wall)
+	// Walls have nil UserData, fruits have Kind as UserData
+	if info.Shape.Body().UserData != nil {
+		return false // Collision with fruit detected
+	}
 
-	return !hasCollision
+	return true // Only walls nearby, position is OK for spawning
 }
 
 // countFruits counts the total number of fruits currently on screen
@@ -450,4 +478,102 @@ func (g *Game) countFruits() int {
 		}
 	})
 	return count
+}
+
+// drawSpeakerButton draws the mute/unmute button in the top-right corner
+func (g *Game) drawSpeakerButton(screen *ebiten.Image) {
+	const (
+		buttonX    = screenWidth - 50 // 430
+		buttonY    = 10
+		buttonSize = 40
+		iconSize   = 24
+		iconX      = buttonX + (buttonSize-iconSize)/2
+		iconY      = buttonY + (buttonSize-iconSize)/2
+	)
+
+	// Draw semi-transparent background
+	var bgPath vector.Path
+	bgPath.MoveTo(buttonX, buttonY)
+	bgPath.LineTo(buttonX+buttonSize, buttonY)
+	bgPath.LineTo(buttonX+buttonSize, buttonY+buttonSize)
+	bgPath.LineTo(buttonX, buttonY+buttonSize)
+	bgPath.Close()
+
+	vs, is := bgPath.AppendVerticesAndIndicesForFilling(nil, nil)
+	for i := range vs {
+		vs[i].SrcX = 1
+		vs[i].SrcY = 1
+		vs[i].ColorR = 0
+		vs[i].ColorG = 0
+		vs[i].ColorB = 0
+		vs[i].ColorA = 0.5 // Semi-transparent black
+	}
+	op := &ebiten.DrawTrianglesOptions{}
+	op.FillRule = ebiten.FillRuleFillAll
+	screen.DrawTriangles(vs, is, whiteSubImage, op)
+
+	// Draw speaker icon
+	iconColor := color.NRGBA{255, 255, 255, 255} // White
+	if g.muted {
+		iconColor = color.NRGBA{200, 200, 200, 255} // Gray when muted
+	}
+
+	// Speaker body (trapezoid)
+	var speakerPath vector.Path
+	speakerPath.MoveTo(iconX, iconY+6)
+	speakerPath.LineTo(iconX+6, iconY+6)
+	speakerPath.LineTo(iconX+6, iconY+18)
+	speakerPath.LineTo(iconX, iconY+18)
+	speakerPath.Close()
+	g.drawFill(screen, speakerPath, iconColor)
+
+	// Speaker cone (triangle)
+	var conePath vector.Path
+	conePath.MoveTo(iconX+6, iconY+6)
+	conePath.LineTo(iconX+12, iconY)
+	conePath.LineTo(iconX+12, iconY+24)
+	conePath.Close()
+	g.drawFill(screen, conePath, iconColor)
+
+	if !g.muted {
+		// Draw sound waves (3 arcs)
+		waveColor := color.NRGBA{255, 255, 255, 200}
+
+		// Wave 1 (small)
+		var wave1 vector.Path
+		wave1.MoveTo(iconX+14, iconY+8)
+		wave1.LineTo(iconX+16, iconY+8)
+		wave1.LineTo(iconX+16, iconY+16)
+		wave1.LineTo(iconX+14, iconY+16)
+		g.drawLine(screen, wave1, waveColor, 1.5)
+
+		// Wave 2 (medium)
+		var wave2 vector.Path
+		wave2.MoveTo(iconX+17, iconY+6)
+		wave2.LineTo(iconX+19, iconY+6)
+		wave2.LineTo(iconX+19, iconY+18)
+		wave2.LineTo(iconX+17, iconY+18)
+		g.drawLine(screen, wave2, waveColor, 1.5)
+
+		// Wave 3 (large)
+		var wave3 vector.Path
+		wave3.MoveTo(iconX+20, iconY+4)
+		wave3.LineTo(iconX+22, iconY+4)
+		wave3.LineTo(iconX+22, iconY+20)
+		wave3.LineTo(iconX+20, iconY+20)
+		g.drawLine(screen, wave3, waveColor, 1.5)
+	} else {
+		// Draw red X when muted
+		xColor := color.NRGBA{255, 50, 50, 255} // Red
+
+		var xPath1 vector.Path
+		xPath1.MoveTo(iconX+14, iconY+4)
+		xPath1.LineTo(iconX+24, iconY+20)
+		g.drawLine(screen, xPath1, xColor, 3)
+
+		var xPath2 vector.Path
+		xPath2.MoveTo(iconX+24, iconY+4)
+		xPath2.LineTo(iconX+14, iconY+20)
+		g.drawLine(screen, xPath2, xColor, 3)
+	}
 }
