@@ -16,6 +16,7 @@ import (
 	"github.com/hajimehoshi/ebiten/v2/inpututil"
 	"github.com/hajimehoshi/ebiten/v2/vector"
 	assets "github.com/ponyo877/suika-shaker/assets/image"
+	"github.com/ponyo877/suika-shaker/assets/sound"
 
 	"github.com/jakecoffman/cp/v2"
 )
@@ -42,7 +43,9 @@ type Game struct {
 	drawer    *ebitencp.Drawer
 	next      next
 
-	debug bool
+	debug      bool
+	gameOver   bool
+	gameOverSE bool // Flag to ensure game over sound plays only once
 }
 
 type next struct {
@@ -79,6 +82,13 @@ func (g *Game) Update() error {
 
 	g.space.EachBody(func(body *cp.Body) {
 		if body.Position().Y < screenHeight-containerHeight {
+			if !g.gameOver {
+				g.gameOver = true
+			}
+			if !g.gameOverSE {
+				g.gameOverSE = true
+				sound.PlayGameOver()
+			}
 			g.space.EachShape(func(shape *cp.Shape) {
 				if shape.Body().UserData != nil {
 					g.space.AddPostStepCallback(removeShapeCallback, shape, nil)
@@ -269,6 +279,9 @@ func main() {
 	// Set global game reference for WASM callbacks
 	currentGame = game
 
+	// Start background music
+	sound.StartBackgroundMusic()
+
 	ebiten.SetWindowSize(screenWidth, screenHeight)
 	ebiten.SetWindowTitle("Suika Shaker")
 	if err := ebiten.RunGame(game); err != nil {
@@ -351,6 +364,13 @@ func BeginFunc(arb *cp.Arbiter, space *cp.Space, data interface{}) bool {
 	space.AddPostStepCallback(removeShapeCallback, shape2, nil)
 
 	score += k.Score()
+
+	// Play sound effect based on fruit type
+	if k == assets.Melon || k == assets.Watermelon {
+		sound.PlaySuikaJoin()
+	} else {
+		sound.PlayJoin()
+	}
 
 	if hasNext, kk := k.Next(); hasNext {
 		k = kk
