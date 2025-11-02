@@ -111,15 +111,6 @@ func (g *Game) Update() error {
 	}
 
 	g.next.angle += 0.01
-	if inpututil.IsKeyJustPressed(ebiten.KeySpace) {
-		g.drop()
-	}
-	if ebiten.IsKeyPressed(ebiten.KeyArrowRight) {
-		g.moveRight()
-	}
-	if ebiten.IsKeyPressed(ebiten.KeyArrowLeft) {
-		g.moveLeft()
-	}
 
 	// Handle speaker button click/touch
 	const (
@@ -154,7 +145,6 @@ func (g *Game) Update() error {
 
 func (g *Game) Draw(screen *ebiten.Image) {
 	g.drawBackground(screen)
-	g.drawFruit(screen, g.next.kind, g.next.x, g.next.y-paddingBottom, g.next.angle)
 	g.space.EachShape(func(shape *cp.Shape) {
 		switch shape.Class.(type) {
 		case *cp.PolyShape:
@@ -179,32 +169,6 @@ func (g *Game) Draw(screen *ebiten.Image) {
 
 func (g *Game) Layout(outsideWidth, outsideHeight int) (int, int) {
 	return screenWidth, screenHeight
-}
-
-func (g *Game) moveRight() {
-	if g.next.x < screenWidth-50 {
-		g.next.x += 4
-	}
-}
-
-func (g *Game) moveLeft() {
-	if g.next.x > 40 {
-		g.next.x -= 4
-	}
-}
-
-func (g *Game) drop() {
-	if g.count > 40 {
-		k := g.next.kind
-		addShapeOptions := addShapeOptions{
-			kind:  g.next.kind,
-			pos:   cp.Vector{X: g.next.x, Y: g.next.y},
-			angle: g.next.angle,
-		}
-		g.space.AddPostStepCallback(addShapeCallback, k, addShapeOptions)
-		g.count = 0
-		g.next.kind = assets.Kind(rand.Intn(2) + int(assets.Min))
-	}
 }
 
 func (g *Game) dropAuto() {
