@@ -15,7 +15,7 @@ import (
 	"github.com/hajimehoshi/ebiten/v2/ebitenutil"
 	"github.com/hajimehoshi/ebiten/v2/inpututil"
 	"github.com/hajimehoshi/ebiten/v2/vector"
-	"github.com/ponyo877/suika-shaker/assets"
+	assets "github.com/ponyo877/suika-shaker/assets/image"
 
 	"github.com/jakecoffman/cp/v2"
 )
