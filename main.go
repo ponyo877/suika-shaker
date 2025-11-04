@@ -3,6 +3,8 @@ package main
 // This is based on "jakecoffman/cp-examples/march".
 
 import (
+	"bytes"
+	_ "embed"
 	"fmt"
 	"image/color"
 	_ "image/png"
@@ -14,19 +16,31 @@ import (
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/hajimehoshi/ebiten/v2/ebitenutil"
 	"github.com/hajimehoshi/ebiten/v2/inpututil"
+	"github.com/hajimehoshi/ebiten/v2/text/v2"
 	"github.com/hajimehoshi/ebiten/v2/vector"
 	assets "github.com/ponyo877/suika-shaker/assets/image"
 	"github.com/ponyo877/suika-shaker/assets/sound"
+	"golang.org/x/image/font/opentype"
 
 	"github.com/jakecoffman/cp/v2"
 )
 
+//go:embed assets/fonts/Poppins-Bold.ttf
+var poppinsBoldTTF []byte
+
+//go:embed assets/fonts/Poppins-Regular.ttf
+var poppinsRegularTTF []byte
+
 var (
-	bgImage       = ebiten.NewImage(100, 50)
-	whiteSubImage = ebiten.NewImage(3, 3)
-	score         = 0
-	hiscore       = 0
-	currentGame   *Game
+	bgImage              = ebiten.NewImage(100, 50)
+	score                = 0
+	hiscore              = 0
+	watermelonCollisions = 0 // Track watermelon-to-watermelon collisions
+	currentGame          *Game
+
+	// Font sources for dialog
+	poppinsBoldSource    *text.GoTextFaceSource
+	poppinsRegularSource *text.GoTextFaceSource
 )
 
 const (
@@ -46,10 +60,14 @@ type Game struct {
 	drawer         *ebitencp.Drawer
 	next           next
 
-	debug      bool
-	gameOver   bool
-	gameOverSE bool // Flag to ensure game over sound plays only once
-	muted      bool // Mute state for audio
+	debug               bool
+	gameOver            bool
+	gameOverSE          bool          // Flag to ensure game over sound plays only once
+	muted               bool          // Mute state for audio
+	showGameOverDialog  bool          // Flag to show game over dialog
+	gameOverScreenshot  *ebiten.Image // Screenshot captured at game over
+	finalScore          int           // Score at game over
+	finalWatermelonHits int           // Watermelon collisions at game over
 }
 
 type next struct {
@@ -63,8 +81,8 @@ func (g *Game) Update() error {
 	g.count++
 	g.dropCount++
 
-	// Auto-drop fruit every second (60 frames)
-	if g.dropCount >= 60 {
+	// Auto-drop fruit every second (60 frames) - only if not showing game over dialog
+	if !g.showGameOverDialog && g.dropCount >= 60 {
 		g.dropAuto()
 		g.dropCount = 0
 	}
@@ -98,25 +116,29 @@ func (g *Game) Update() error {
 	})
 
 	// Handle game over state
-	if g.gameOver {
-		g.space.EachShape(func(shape *cp.Shape) {
-			if shape.Body().UserData != nil {
-				g.space.AddPostStepCallback(removeShapeCallback, shape, nil)
+	if g.gameOver && !g.showGameOverDialog {
+		// Show dialog instead of immediate reset
+		g.showGameOverDialog = true
+		g.finalScore = score
+		g.finalWatermelonHits = watermelonCollisions
+		hiscore = int(math.Max(float64(score), float64(hiscore)))
+
+		// Stop all fruits from moving
+		g.space.EachBody(func(body *cp.Body) {
+			if body.UserData != nil {
+				body.SetVelocity(0, 0)
+				body.SetAngularVelocity(0)
 			}
 		})
-		hiscore = int(math.Max(float64(score), float64(hiscore)))
-		score = 0
-		g.gameOver = false
-		g.gameOverSE = false
 	}
 
 	g.next.angle += 0.01
 
 	// Handle speaker button click/touch
 	const (
-		buttonX    = screenWidth - 50
+		buttonX    = screenWidth - 60
 		buttonY    = 10
-		buttonSize = 40
+		buttonSize = 50
 	)
 
 	// Mouse click detection
@@ -135,6 +157,58 @@ func (g *Game) Update() error {
 		if x >= buttonX && x <= buttonX+buttonSize && y >= buttonY && y <= buttonY+buttonSize {
 			g.muted = !g.muted
 			sound.SetMuted(g.muted)
+		}
+	}
+
+	// Handle game over dialog button clicks
+	if g.showGameOverDialog {
+		const (
+			dialogWidth  = 340
+			dialogHeight = 440
+			dialogX      = (screenWidth - dialogWidth) / 2
+			dialogY      = (screenHeight - dialogHeight) / 2
+
+			buttonY        = dialogY + dialogHeight - 85
+			retryWidth     = 230
+			retryHeight    = 50
+			retryX         = dialogX + 25
+			xButtonSize    = 60
+			xButtonX       = retryX + retryWidth + 15
+			xButtonCenterX = xButtonX + xButtonSize/2
+			xButtonCenterY = buttonY + retryHeight/2
+		)
+
+		// Mouse click detection
+		if inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonLeft) {
+			x, y := ebiten.CursorPosition()
+			// Check Retry button
+			if x >= int(retryX) && x <= int(retryX+retryWidth) &&
+				y >= int(buttonY) && y <= int(buttonY+retryHeight) {
+				g.resetGame()
+			}
+			// Check X button (circle)
+			dx := float64(x) - xButtonCenterX
+			dy := float64(y) - xButtonCenterY
+			if dx*dx+dy*dy <= float64(xButtonSize*xButtonSize/4) {
+				g.shareToX()
+			}
+		}
+
+		// Touch detection (for mobile/WASM)
+		touchIDs := inpututil.AppendJustPressedTouchIDs(nil)
+		for _, id := range touchIDs {
+			x, y := ebiten.TouchPosition(id)
+			// Check Retry button
+			if x >= int(retryX) && x <= int(retryX+retryWidth) &&
+				y >= int(buttonY) && y <= int(buttonY+retryHeight) {
+				g.resetGame()
+			}
+			// Check X button (circle)
+			dx := float64(x) - xButtonCenterX
+			dy := float64(y) - xButtonCenterY
+			if dx*dx+dy*dy <= float64(xButtonSize*xButtonSize/4) {
+				g.shareToX()
+			}
 		}
 	}
 
@@ -165,6 +239,18 @@ func (g *Game) Draw(screen *ebiten.Image) {
 
 	// Draw speaker/mute button in top-right corner
 	g.drawSpeakerButton(screen)
+
+	// Draw game over dialog if active
+	if g.showGameOverDialog {
+		g.drawGameOverDialog(screen)
+
+		// Capture screenshot after dialog is drawn (on first frame)
+		if g.gameOverScreenshot == nil {
+			// Create a copy of the current screen with dialog for screenshot
+			g.gameOverScreenshot = ebiten.NewImage(screenWidth, screenHeight)
+			g.gameOverScreenshot.DrawImage(screen, nil)
+		}
+	}
 }
 
 func (g *Game) Layout(outsideWidth, outsideHeight int) (int, int) {
@@ -229,40 +315,46 @@ func (g *Game) drawBackground(screen *ebiten.Image) {
 }
 
 func (g *Game) drawLine(screen *ebiten.Image, path vector.Path, c color.NRGBA, width float32) {
-	sop := &vector.StrokeOptions{}
-	sop.Width = width
-	sop.LineJoin = vector.LineJoinRound
-	vs, is := path.AppendVerticesAndIndicesForStroke(nil, nil, sop)
-	for i := range vs {
-		vs[i].SrcX = 1
-		vs[i].SrcY = 1
-		vs[i].ColorR = float32(c.R) / float32(0xff)
-		vs[i].ColorG = float32(c.G) / float32(0xff)
-		vs[i].ColorB = float32(c.B) / float32(0xff)
-		vs[i].ColorA = float32(c.A) / float32(0xff)
-	}
-	op := &ebiten.DrawTrianglesOptions{}
-	op.FillRule = ebiten.FillRuleFillAll
-	screen.DrawTriangles(vs, is, whiteSubImage, op)
+	strokeOp := &vector.StrokeOptions{}
+	strokeOp.Width = width
+	strokeOp.LineJoin = vector.LineJoinRound
+
+	drawOp := &vector.DrawPathOptions{}
+	drawOp.AntiAlias = true
+	drawOp.ColorScale.ScaleWithColor(c)
+
+	vector.StrokePath(screen, &path, strokeOp, drawOp)
 }
 
 func (g *Game) drawFill(screen *ebiten.Image, path vector.Path, c color.NRGBA) {
-	vs, is := path.AppendVerticesAndIndicesForFilling(nil, nil)
-	for i := range vs {
-		vs[i].SrcX = 1
-		vs[i].SrcY = 1
-		vs[i].ColorR = float32(c.R) / float32(0xff)
-		vs[i].ColorG = float32(c.G) / float32(0xff)
-		vs[i].ColorB = float32(c.B) / float32(0xff)
-		vs[i].ColorA = float32(c.A) / float32(0xff)
-	}
-	op := &ebiten.DrawTrianglesOptions{}
-	op.FillRule = ebiten.FillRuleFillAll
-	screen.DrawTriangles(vs, is, whiteSubImage, op)
+	drawOp := &vector.DrawPathOptions{}
+	drawOp.AntiAlias = true
+	drawOp.ColorScale.ScaleWithColor(c)
+
+	vector.FillPath(screen, &path, nil, drawOp)
 }
 
 func init() {
-	whiteSubImage.Fill(color.White)
+	// Load fonts
+	boldFont, err := opentype.Parse(poppinsBoldTTF)
+	if err != nil {
+		log.Fatal(err)
+	}
+	poppinsBoldSource, err = text.NewGoTextFaceSource(bytes.NewReader(poppinsBoldTTF))
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	regularFont, err := opentype.Parse(poppinsRegularTTF)
+	if err != nil {
+		log.Fatal(err)
+	}
+	poppinsRegularSource, err = text.NewGoTextFaceSource(bytes.NewReader(poppinsRegularTTF))
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	_, _ = boldFont, regularFont // Suppress unused variable warnings
 }
 
 func main() {
@@ -387,6 +479,15 @@ func BeginFunc(arb *cp.Arbiter, space *cp.Space, data interface{}) bool {
 		return false
 	}
 
+	// Check if both shapes are watermelons (track watermelon collisions)
+	var k2 assets.Kind
+	if ud2, ok := shape2.Body().UserData.(assets.Kind); ok {
+		k2 = ud2
+	}
+	if k == assets.Watermelon && k2 == assets.Watermelon {
+		watermelonCollisions++
+	}
+
 	space.AddPostStepCallback(removeShapeCallback, shape, nil)
 	space.AddPostStepCallback(removeShapeCallback, shape2, nil)
 
@@ -446,100 +547,237 @@ func (g *Game) countFruits() int {
 	return count
 }
 
-// drawSpeakerButton draws the mute/unmute button in the top-right corner
-func (g *Game) drawSpeakerButton(screen *ebiten.Image) {
+// resetGame resets the game state and starts a new game
+func (g *Game) resetGame() {
+	// Remove all fruits from the game
+	g.space.EachShape(func(shape *cp.Shape) {
+		if shape.Body().UserData != nil {
+			g.space.AddPostStepCallback(removeShapeCallback, shape, nil)
+		}
+	})
+
+	// Reset game state
+	score = 0
+	watermelonCollisions = 0
+	g.gameOver = false
+	g.gameOverSE = false
+	g.showGameOverDialog = false
+	g.gameOverScreenshot = nil
+	g.finalScore = 0
+	g.finalWatermelonHits = 0
+	g.spawnFailCount = 0
+
+	// Restart background music
+	sound.StartBackgroundMusic()
+}
+
+// shareToX shares the game result to X (Twitter) with screenshot
+func (g *Game) shareToX() {
+	// This will be implemented with WASM-specific code
+	shareGameResultToX(g.gameOverScreenshot, g.finalScore, g.finalWatermelonHits)
+}
+
+// drawTextCentered draws text centered horizontally at the given position
+func drawTextCentered(screen *ebiten.Image, str string, source *text.GoTextFaceSource, size float64, x, y float64, clr color.Color) {
+	face := &text.GoTextFace{
+		Source: source,
+		Size:   size,
+	}
+
+	// Calculate text width to center it
+	textWidth, textHeight := text.Measure(str, face, 0)
+
+	op := &text.DrawOptions{}
+	op.GeoM.Translate(x-textWidth/2, y-textHeight/2)
+	op.ColorScale.ScaleWithColor(clr)
+	text.Draw(screen, str, face, op)
+}
+
+// drawRoundedRect draws a rounded rectangle with the given parameters
+func (g *Game) drawRoundedRect(screen *ebiten.Image, x, y, width, height, radius float32, clr color.NRGBA) {
+	var path vector.Path
+
+	// Start from top-left corner (after radius)
+	path.MoveTo(x+radius, y)
+	// Top edge
+	path.LineTo(x+width-radius, y)
+	// Top-right arc
+	path.ArcTo(x+width, y, x+width, y+radius, radius)
+	// Right edge
+	path.LineTo(x+width, y+height-radius)
+	// Bottom-right arc
+	path.ArcTo(x+width, y+height, x+width-radius, y+height, radius)
+	// Bottom edge
+	path.LineTo(x+radius, y+height)
+	// Bottom-left arc
+	path.ArcTo(x, y+height, x, y+height-radius, radius)
+	// Left edge
+	path.LineTo(x, y+radius)
+	// Top-left arc
+	path.ArcTo(x, y, x+radius, y, radius)
+	path.Close()
+
+	g.drawFill(screen, path, clr)
+}
+
+// drawGameOverDialog draws the game over dialog matching the design image
+func (g *Game) drawGameOverDialog(screen *ebiten.Image) {
 	const (
-		buttonX    = screenWidth - 50 // 430
-		buttonY    = 10
-		buttonSize = 40
-		iconSize   = 24
-		iconX      = buttonX + (buttonSize-iconSize)/2
-		iconY      = buttonY + (buttonSize-iconSize)/2
+		dialogWidth  = 340
+		dialogHeight = 440
+		dialogX      = (screenWidth - dialogWidth) / 2
+		dialogY      = (screenHeight - dialogHeight) / 2
+		borderWidth  = 10
+		radius       = 25
 	)
 
-	// Draw semi-transparent background
-	var bgPath vector.Path
-	bgPath.MoveTo(buttonX, buttonY)
-	bgPath.LineTo(buttonX+buttonSize, buttonY)
-	bgPath.LineTo(buttonX+buttonSize, buttonY+buttonSize)
-	bgPath.LineTo(buttonX, buttonY+buttonSize)
-	bgPath.Close()
+	// Colors from the design
+	beigeColor := color.NRGBA{245, 230, 211, 255}  // #F5E6D3
+	darkTealColor := color.NRGBA{61, 90, 92, 255}  // #3D5A5C
+	redBrownColor := color.NRGBA{200, 90, 84, 255} // #C85A54
+	tealColor := color.NRGBA{150, 200, 200, 255}   // #bfebeaff
+	whiteColor := color.NRGBA{255, 255, 255, 255}
 
-	vs, is := bgPath.AppendVerticesAndIndicesForFilling(nil, nil)
-	for i := range vs {
-		vs[i].SrcX = 1
-		vs[i].SrcY = 1
-		vs[i].ColorR = 0
-		vs[i].ColorG = 0
-		vs[i].ColorB = 0
-		vs[i].ColorA = 0.5 // Semi-transparent black
-	}
-	op := &ebiten.DrawTrianglesOptions{}
-	op.FillRule = ebiten.FillRuleFillAll
-	screen.DrawTriangles(vs, is, whiteSubImage, op)
+	// Draw semi-transparent white overlay (full screen)
+	var overlayPath vector.Path
+	overlayPath.MoveTo(0, 0)
+	overlayPath.LineTo(screenWidth, 0)
+	overlayPath.LineTo(screenWidth, screenHeight)
+	overlayPath.LineTo(0, screenHeight)
+	overlayPath.Close()
 
-	// Draw speaker icon
-	iconColor := color.NRGBA{255, 255, 255, 255} // White
+	g.drawFill(screen, overlayPath, color.NRGBA{255, 255, 255, 178}) // 0.7 alpha = 178
+
+	// Draw beige background with dark teal border
+	g.drawRoundedRect(screen, dialogX, dialogY, dialogWidth, dialogHeight, radius, beigeColor)
+
+	// Draw border (stroke)
+	g.drawLine(screen, g.createRoundedRectPath(dialogX, dialogY, dialogWidth, dialogHeight, radius), darkTealColor, borderWidth)
+
+	// Draw text content
+	centerX := dialogX + dialogWidth/2
+
+	// "GAME OVER" - red/brown, large
+	drawTextCentered(screen, "GAME OVER", poppinsBoldSource, 42, float64(centerX), float64(dialogY+60), redBrownColor)
+
+	// "SCORE" label - dark teal, small
+	drawTextCentered(screen, "SCORE", poppinsBoldSource, 18, float64(centerX), float64(dialogY+120), darkTealColor)
+
+	// Score value - dark teal, large
+	scoreStr := fmt.Sprintf("%d", g.finalScore)
+	drawTextCentered(screen, scoreStr, poppinsBoldSource, 60, float64(centerX), float64(dialogY+175), darkTealColor)
+
+	// "WATERMELONS DESTROYED" label - dark teal, small
+	drawTextCentered(screen, "WATERMELONS HITS", poppinsBoldSource, 16, float64(centerX), float64(dialogY+235), darkTealColor)
+
+	// Watermelon count - dark teal, large
+	watermelonStr := fmt.Sprintf("%d", g.finalWatermelonHits)
+	drawTextCentered(screen, watermelonStr, poppinsBoldSource, 60, float64(centerX), float64(dialogY+290), darkTealColor)
+
+	// Button layout (RETRY button + X button side by side)
+	const (
+		buttonY        = dialogY + dialogHeight - 85
+		retryWidth     = 230
+		retryHeight    = 50
+		retryRadius    = 15
+		retryX         = dialogX + 25
+		xButtonSize    = 60
+		xButtonX       = retryX + retryWidth + 8
+		xButtonCenterX = xButtonX + xButtonSize/2
+		xButtonCenterY = buttonY + retryHeight/2
+	)
+
+	// Draw RETRY button (red/brown rounded rectangle)
+	g.drawRoundedRect(screen, retryX, buttonY, retryWidth, retryHeight, retryRadius, redBrownColor)
+
+	// RETRY text (white, centered)
+	drawTextCentered(screen, "RETRY", poppinsBoldSource, 28, float64(retryX+retryWidth/2), float64(buttonY+retryHeight/2), whiteColor)
+
+	// Draw X button (teal circle)
+	var circlePath vector.Path
+	circlePath.Arc(xButtonCenterX, xButtonCenterY, xButtonSize/2, 0, 2*math.Pi, vector.Clockwise)
+	circlePath.Close()
+	g.drawFill(screen, circlePath, tealColor)
+
+	// Draw Twitter/X icon
+	g.drawTwitterIcon(screen, xButtonCenterX, xButtonCenterY, 40, whiteColor)
+}
+
+// createRoundedRectPath creates a path for a rounded rectangle
+func (g *Game) createRoundedRectPath(x, y, width, height, radius float32) vector.Path {
+	var path vector.Path
+	path.MoveTo(x+radius, y)
+	path.LineTo(x+width-radius, y)
+	path.ArcTo(x+width, y, x+width, y+radius, radius)
+	path.LineTo(x+width, y+height-radius)
+	path.ArcTo(x+width, y+height, x+width-radius, y+height, radius)
+	path.LineTo(x+radius, y+height)
+	path.ArcTo(x, y+height, x, y+height-radius, radius)
+	path.LineTo(x, y+radius)
+	path.ArcTo(x, y, x+radius, y, radius)
+	path.Close()
+	return path
+}
+
+// drawTwitterIcon draws the share icon using share.png
+func (g *Game) drawTwitterIcon(screen *ebiten.Image, centerX, centerY, size float32, clr color.NRGBA) {
+	// Get share icon from assets
+	shareIcon := assets.GetIcon(assets.Share)
+
+	// Calculate scale to fit the icon in the specified size
+	iconBounds := shareIcon.Bounds()
+	scale := float64(size) / float64(iconBounds.Dx())
+
+	// Calculate centered position
+	scaledWidth := float64(iconBounds.Dx()) * scale
+	scaledHeight := float64(iconBounds.Dy()) * scale
+	x := float64(centerX) - scaledWidth/2
+	y := float64(centerY) - scaledHeight/2
+
+	// Draw the share icon
+	op := &ebiten.DrawImageOptions{}
+	op.Filter = ebiten.FilterLinear
+	op.GeoM.Scale(scale, scale)
+	op.GeoM.Translate(x, y)
+
+	// Apply color tint
+	op.ColorScale.ScaleWithColor(clr)
+
+	screen.DrawImage(shareIcon, op)
+}
+
+// drawSpeakerButton draws the mute/unmute button in the top-right corner using images
+func (g *Game) drawSpeakerButton(screen *ebiten.Image) {
+	const (
+		buttonX    = screenWidth - 60
+		buttonY    = 10
+		buttonSize = 50
+	)
+
+	// Choose the appropriate icon
+	var icon *ebiten.Image
 	if g.muted {
-		iconColor = color.NRGBA{200, 200, 200, 255} // Gray when muted
-	}
-
-	// Speaker body (trapezoid)
-	var speakerPath vector.Path
-	speakerPath.MoveTo(iconX, iconY+6)
-	speakerPath.LineTo(iconX+6, iconY+6)
-	speakerPath.LineTo(iconX+6, iconY+18)
-	speakerPath.LineTo(iconX, iconY+18)
-	speakerPath.Close()
-	g.drawFill(screen, speakerPath, iconColor)
-
-	// Speaker cone (triangle)
-	var conePath vector.Path
-	conePath.MoveTo(iconX+6, iconY+6)
-	conePath.LineTo(iconX+12, iconY)
-	conePath.LineTo(iconX+12, iconY+24)
-	conePath.Close()
-	g.drawFill(screen, conePath, iconColor)
-
-	if !g.muted {
-		// Draw sound waves (3 arcs)
-		waveColor := color.NRGBA{255, 255, 255, 200}
-
-		// Wave 1 (small)
-		var wave1 vector.Path
-		wave1.MoveTo(iconX+14, iconY+8)
-		wave1.LineTo(iconX+16, iconY+8)
-		wave1.LineTo(iconX+16, iconY+16)
-		wave1.LineTo(iconX+14, iconY+16)
-		g.drawLine(screen, wave1, waveColor, 1.5)
-
-		// Wave 2 (medium)
-		var wave2 vector.Path
-		wave2.MoveTo(iconX+17, iconY+6)
-		wave2.LineTo(iconX+19, iconY+6)
-		wave2.LineTo(iconX+19, iconY+18)
-		wave2.LineTo(iconX+17, iconY+18)
-		g.drawLine(screen, wave2, waveColor, 1.5)
-
-		// Wave 3 (large)
-		var wave3 vector.Path
-		wave3.MoveTo(iconX+20, iconY+4)
-		wave3.LineTo(iconX+22, iconY+4)
-		wave3.LineTo(iconX+22, iconY+20)
-		wave3.LineTo(iconX+20, iconY+20)
-		g.drawLine(screen, wave3, waveColor, 1.5)
+		icon = assets.GetIcon(assets.Muted)
 	} else {
-		// Draw red X when muted
-		xColor := color.NRGBA{255, 50, 50, 255} // Red
-
-		var xPath1 vector.Path
-		xPath1.MoveTo(iconX+14, iconY+4)
-		xPath1.LineTo(iconX+24, iconY+20)
-		g.drawLine(screen, xPath1, xColor, 3)
-
-		var xPath2 vector.Path
-		xPath2.MoveTo(iconX+24, iconY+4)
-		xPath2.LineTo(iconX+14, iconY+20)
-		g.drawLine(screen, xPath2, xColor, 3)
+		icon = assets.GetIcon(assets.Speaker)
 	}
+
+	// Calculate scale to fit the icon in the button size
+	iconBounds := icon.Bounds()
+	scaleX := float64(buttonSize) / float64(iconBounds.Dx())
+	scaleY := float64(buttonSize) / float64(iconBounds.Dy())
+	scale := math.Min(scaleX, scaleY)
+
+	// Center the icon
+	scaledWidth := float64(iconBounds.Dx()) * scale
+	scaledHeight := float64(iconBounds.Dy()) * scale
+	offsetX := (float64(buttonSize) - scaledWidth) / 2
+	offsetY := (float64(buttonSize) - scaledHeight) / 2
+
+	// Draw the icon
+	op := &ebiten.DrawImageOptions{}
+	op.Filter = ebiten.FilterLinear
+	op.GeoM.Scale(scale, scale)
+	op.GeoM.Translate(float64(buttonX)+offsetX, float64(buttonY)+offsetY)
+	screen.DrawImage(icon, op)
 }

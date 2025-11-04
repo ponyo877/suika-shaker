@@ -43,7 +43,23 @@ var (
 	//go:embed watermelon.png
 	watermelon_png []byte
 
+	//go:embed speaker.png
+	speaker_png []byte
+	//go:embed muted.png
+	muted_png []byte
+	//go:embed share.png
+	share_png []byte
+
 	assets map[Kind]ImageSet
+	icons  map[IconKind]*ebiten.Image
+)
+
+type IconKind int
+
+const (
+	Speaker IconKind = iota
+	Muted
+	Share
 )
 
 type Kind int
@@ -87,6 +103,17 @@ func init() {
 		Melon:      makeImageSet(melonImage, melonPngImage, 1.2, 100),
 		Watermelon: makeImageSet(watermelonImage, watermelonPngImage, 1.2, 110),
 	}
+
+	// Load icons (only need EbitenImage, not image.Image for physics)
+	_, speakerImage := loadImage(speaker_png)
+	_, mutedImage := loadImage(muted_png)
+	_, shareImage := loadImage(share_png)
+
+	icons = map[IconKind]*ebiten.Image{
+		Speaker: speakerImage,
+		Muted:   mutedImage,
+		Share:   shareImage,
+	}
 }
 
 func loadImage(b []byte) (image.Image, *ebiten.Image) {
@@ -94,12 +121,7 @@ func loadImage(b []byte) (image.Image, *ebiten.Image) {
 	if err != nil {
 		log.Fatal(err)
 	}
-	origImage := ebiten.NewImageFromImage(img)
-
-	s := origImage.Bounds().Size()
-	ebitenImage := ebiten.NewImage(s.X, s.Y)
-	op := &ebiten.DrawImageOptions{}
-	ebitenImage.DrawImage(origImage, op)
+	ebitenImage := ebiten.NewImageFromImage(img)
 	return img, ebitenImage
 }
 
@@ -109,6 +131,14 @@ func Get(tp Kind) ImageSet {
 		log.Fatalf("image %d not found", tp)
 	}
 	return is
+}
+
+func GetIcon(kind IconKind) *ebiten.Image {
+	icon, ok := icons[kind]
+	if !ok {
+		log.Fatalf("icon %d not found", kind)
+	}
+	return icon
 }
 
 func Length() int {
