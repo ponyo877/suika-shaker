@@ -5,6 +5,17 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Suika Shaker</title>
+    <link rel="icon" type="image/x-icon" href="favicon.ico">
+    <meta property="og:title" content="Suika Shaker" />
+    <meta property="og:description" content="A fun and interactive game using device motion." />
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://ponyo877.github.io/suika-shaker/" />
+    <meta property="og:image" content="https://ponyo877.github.io/suika-shaker/ogp.png" />
+    <meta property="og:site_name" content="Suika Shaker" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Suika Shaker" />
+    <meta name="twitter:description" content="A fun and interactive game using device motion." />
+    <meta name="twitter:image" content="https://ponyo877.github.io/suika-shaker/ogp.png" />
     <style>
         body {
             margin: 0;
@@ -129,7 +140,7 @@
         }
 
         // Share game result to X (Twitter)
-        window.shareToX = async function(base64Image, shareText) {
+        window.shareToX = async function (base64Image, shareText) {
             try {
                 // Convert base64 to Blob
                 const byteString = atob(base64Image);
