@@ -65,6 +65,7 @@ type Game struct {
 	gameOverSE          bool          // Flag to ensure game over sound plays only once
 	muted               bool          // Mute state for audio
 	showGameOverDialog  bool          // Flag to show game over dialog
+	showTitleScreen     bool          // Flag to show title screen
 	gameOverScreenshot  *ebiten.Image // Screenshot captured at game over
 	finalScore          int           // Score at game over
 	finalWatermelonHits int           // Watermelon collisions at game over
@@ -79,6 +80,37 @@ type next struct {
 
 func (g *Game) Update() error {
 	g.count++
+
+	// Handle title screen interactions
+	if g.showTitleScreen {
+		// START button dimensions and position (same as in drawTitleScreen)
+		const (
+			buttonWidth  = 230
+			buttonHeight = 50
+		)
+		buttonX := (screenWidth - buttonWidth) / 2
+		buttonY := 600
+
+		// Mouse click detection
+		if inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonLeft) {
+			x, y := ebiten.CursorPosition()
+			if x >= buttonX && x <= buttonX+buttonWidth && y >= buttonY && y <= buttonY+buttonHeight {
+				g.startGame()
+			}
+		}
+
+		// Touch detection (for mobile/WASM)
+		touchIDs := inpututil.AppendJustPressedTouchIDs(nil)
+		for _, id := range touchIDs {
+			x, y := ebiten.TouchPosition(id)
+			if x >= buttonX && x <= buttonX+buttonWidth && y >= buttonY && y <= buttonY+buttonHeight {
+				g.startGame()
+			}
+		}
+
+		return nil // Skip game logic when showing title screen
+	}
+
 	g.dropCount++
 
 	// Auto-drop fruit every second (60 frames) - only if not showing game over dialog
@@ -218,6 +250,12 @@ func (g *Game) Update() error {
 }
 
 func (g *Game) Draw(screen *ebiten.Image) {
+	// Show title screen instead of game if showTitleScreen is true
+	if g.showTitleScreen {
+		g.drawTitleScreen(screen)
+		return
+	}
+
 	g.drawBackground(screen)
 	g.space.EachShape(func(shape *cp.Shape) {
 		switch shape.Class.(type) {
@@ -394,12 +432,12 @@ func main() {
 	game.drawer = ebitencp.NewDrawer(screenWidth, screenHeight)
 	game.drawer.FlipYAxis = true
 	game.next = next{kind: assets.Grape, x: screenWidth / 2, y: screenHeight - containerHeight + 10, angle: 0}
+	game.showTitleScreen = true // Show title screen at startup
 
 	// Set global game reference for WASM callbacks
 	currentGame = game
 
-	// Start background music
-	sound.StartBackgroundMusic()
+	// Don't start background music here - it will be started when user presses START button
 
 	ebiten.SetWindowSize(screenWidth, screenHeight)
 	ebiten.SetWindowTitle("Suika Shaker")
@@ -567,8 +605,10 @@ func (g *Game) resetGame() {
 	g.finalWatermelonHits = 0
 	g.spawnFailCount = 0
 
-	// Restart background music
-	sound.StartBackgroundMusic()
+	// Restart background music only if not muted
+	if !g.muted {
+		sound.StartBackgroundMusic()
+	}
 }
 
 // shareToX shares the game result to X (Twitter) with screenshot
@@ -744,6 +784,67 @@ func (g *Game) drawTwitterIcon(screen *ebiten.Image, centerX, centerY, size floa
 	op.ColorScale.ScaleWithColor(clr)
 
 	screen.DrawImage(shareIcon, op)
+}
+
+// drawTitleScreen draws the title screen with logo and start button
+func (g *Game) drawTitleScreen(screen *ebiten.Image) {
+	// Colors matching the game design
+	redBrownColor := color.NRGBA{200, 90, 84, 255} // #C85A54
+	whiteColor := color.NRGBA{255, 255, 255, 255}
+
+	// Draw same background as game screen
+	g.drawBackground(screen)
+
+	// Get title logo
+	titleLogo := assets.GetIcon(assets.TitleLogo)
+	titleLogoBounds := titleLogo.Bounds()
+
+	// Calculate logo scale and position (centered, upper part of screen)
+	const maxLogoWidth = 400.0
+	logoScale := maxLogoWidth / float64(titleLogoBounds.Dx())
+	if logoScale > 1.5 {
+		logoScale = 1.5 // Cap the scale to avoid too large logo
+	}
+
+	scaledLogoWidth := float64(titleLogoBounds.Dx()) * logoScale
+	logoX := (screenWidth - scaledLogoWidth) / 2
+	logoY := 120.0
+
+	// Draw title logo
+	logoOp := &ebiten.DrawImageOptions{}
+	logoOp.Filter = ebiten.FilterLinear
+	logoOp.GeoM.Scale(logoScale, logoScale)
+	logoOp.GeoM.Translate(logoX, logoY)
+	screen.DrawImage(titleLogo, logoOp)
+
+	// START button dimensions and position (matching RETRY button style)
+	const (
+		buttonWidth  = 230
+		buttonHeight = 50
+		buttonRadius = 15
+	)
+	buttonX := float32((screenWidth - buttonWidth) / 2)
+	buttonY := float32(600)
+
+	// Draw START button (red/brown rounded rectangle, matching RETRY button)
+	g.drawRoundedRect(screen, buttonX, buttonY, buttonWidth, buttonHeight, buttonRadius, redBrownColor)
+
+	// START text (white, centered, matching RETRY button text)
+	drawTextCentered(screen, "START", poppinsBoldSource, 28, float64(buttonX+buttonWidth/2), float64(buttonY+buttonHeight/2), whiteColor)
+}
+
+// startGame initiates the game from the title screen
+func (g *Game) startGame() {
+	// Request motion sensor permission (WASM only, will call onMotionPermissionGranted when ready)
+	requestMotionPermission()
+
+	// Hide title screen and start the game
+	g.showTitleScreen = false
+
+	// Start background music only if not muted
+	if !g.muted {
+		sound.StartBackgroundMusic()
+	}
 }
 
 // drawSpeakerButton draws the mute/unmute button in the top-right corner using images

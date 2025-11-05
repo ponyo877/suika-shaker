@@ -47,7 +47,7 @@
             border-radius: 5px;
             cursor: pointer;
             margin: 20px auto;
-            display: none;
+            display: none; /* Hidden by default, title screen START button handles permission */
         }
 
         #permissionBtn:hover {
@@ -78,13 +78,8 @@
             wasmReady = true;
             go.run(result.instance);
 
-            // Show permission button for iOS or if permission is needed
-            if (typeof DeviceMotionEvent.requestPermission === 'function') {
-                document.getElementById("permissionBtn").style.display = "block";
-            } else {
-                // For non-iOS devices, start listening immediately
-                startMotionListener();
-            }
+            // Title screen START button now handles motion permission request
+            // No need to show permission button or start motion listener here
 
             // Setup tap event
             setupTapEvent();
@@ -93,7 +88,33 @@
             document.getElementById("loading").innerHTML = "Failed to load game. Please refresh the page.";
         });
 
-        // Request permission for iOS
+        // Function to request motion permission (called from Go via START button)
+        window.requestMotionPermission = async function() {
+            if (typeof DeviceMotionEvent.requestPermission === 'function') {
+                try {
+                    const permission = await DeviceMotionEvent.requestPermission();
+                    if (permission === 'granted') {
+                        startMotionListener();
+                        if (window.onMotionPermissionGranted) {
+                            window.onMotionPermissionGranted();
+                        }
+                    } else {
+                        alert('Motion sensor permission denied. The game may not work properly.');
+                    }
+                } catch (error) {
+                    console.error('Permission request failed:', error);
+                    alert('Failed to request motion sensor permission.');
+                }
+            } else {
+                // Non-iOS devices: start motion listener immediately
+                startMotionListener();
+                if (window.onMotionPermissionGranted) {
+                    window.onMotionPermissionGranted();
+                }
+            }
+        };
+
+        // Keep the old permission button for backward compatibility (hidden by default)
         document.getElementById("permissionBtn").addEventListener("click", async () => {
             if (typeof DeviceMotionEvent.requestPermission === 'function') {
                 try {

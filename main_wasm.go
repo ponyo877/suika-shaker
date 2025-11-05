@@ -28,10 +28,24 @@ func setupWASMCallbacks() {
 		}
 		return nil
 	}))
+
+	// Expose onMotionPermissionGranted function to JavaScript
+	// This is called after motion sensor permission is granted on iOS
+	js.Global().Set("onMotionPermissionGranted", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+		// Motion sensor permission granted, game can now start
+		// No additional action needed here as the game already started
+		return nil
+	}))
 }
 
 func getAcceleration() (float64, float64, float64) {
 	return accelerationX, accelerationY, accelerationZ
+}
+
+func requestMotionPermission() {
+	// Call JavaScript function to request motion sensor permission
+	// This function is defined in index.html
+	js.Global().Call("requestMotionPermission")
 }
 
 func shareGameResultToX(screenshot *ebiten.Image, score int, watermelonHits int) {

@@ -49,6 +49,8 @@ var (
 	muted_png []byte
 	//go:embed share.png
 	share_png []byte
+	//go:embed titlelogo.png
+	titlelogo_png []byte
 
 	assets map[Kind]ImageSet
 	icons  map[IconKind]*ebiten.Image
@@ -60,6 +62,7 @@ const (
 	Speaker IconKind = iota
 	Muted
 	Share
+	TitleLogo
 )
 
 type Kind int
@@ -108,11 +111,13 @@ func init() {
 	_, speakerImage := loadImage(speaker_png)
 	_, mutedImage := loadImage(muted_png)
 	_, shareImage := loadImage(share_png)
+	_, titleLogoImage := loadImage(titlelogo_png)
 
 	icons = map[IconKind]*ebiten.Image{
-		Speaker: speakerImage,
-		Muted:   mutedImage,
-		Share:   shareImage,
+		Speaker:   speakerImage,
+		Muted:     mutedImage,
+		Share:     shareImage,
+		TitleLogo: titleLogoImage,
 	}
 }
 
