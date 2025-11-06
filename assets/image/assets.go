@@ -100,11 +100,11 @@ func init() {
 		Grape:      makeImageSet(grapeImage, grapePngImage, 1.0, 10),
 		Mandarin:   makeImageSet(mandarinImage, mandarinPngImage, 1.0, 20),
 		Apple:      makeImageSet(appleImage, applePngImage, 1.0, 60),
-		Pear:       makeImageSet(pearImage, pearPngImage, 1.2, 70),
-		Peach:      makeImageSet(peachImage, peachPngImage, 1.2, 80),
-		Pineapple:  makeImageSet(pineappleImage, pineapplePngImage, 1.2, 90),
-		Melon:      makeImageSet(melonImage, melonPngImage, 1.2, 100),
-		Watermelon: makeImageSet(watermelonImage, watermelonPngImage, 1.2, 110),
+		Pear:       makeImageSet(pearImage, pearPngImage, 1.0, 70),
+		Peach:      makeImageSet(peachImage, peachPngImage, 1.0, 80),
+		Pineapple:  makeImageSet(pineappleImage, pineapplePngImage, 1.0, 90),
+		Melon:      makeImageSet(melonImage, melonPngImage, 1.0, 100),
+		Watermelon: makeImageSet(watermelonImage, watermelonPngImage, 1.0, 110),
 	}
 
 	// Load icons (only need EbitenImage, not image.Image for physics)

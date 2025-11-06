@@ -60,6 +60,23 @@
     <div id="gameContainer">
         <div id="loading" style="color: white;">Loading...</div>
         <button id="permissionBtn">Enable Motion Sensor</button>
+
+        <!-- START button overlay for title screen -->
+        <button id="startButton" style="
+            position: absolute;
+            display: none;
+            background-color: rgba(200, 90, 84, 1);
+            color: white;
+            border: none;
+            border-radius: 15px;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Helvetica', 'Arial', sans-serif;
+            font-weight: bold;
+            font-size: 28px;
+            cursor: pointer;
+            z-index: 1000;
+            outline: none;
+            -webkit-tap-highlight-color: transparent;
+        ">START</button>
     </div>
 
     <script src="wasm_exec.js"></script>
@@ -86,49 +103,6 @@
         }).catch((err) => {
             console.error("Failed to load WASM:", err);
             document.getElementById("loading").innerHTML = "Failed to load game. Please refresh the page.";
-        });
-
-        // Function to request motion permission (called from Go via START button)
-        window.requestMotionPermission = async function() {
-            if (typeof DeviceMotionEvent.requestPermission === 'function') {
-                try {
-                    const permission = await DeviceMotionEvent.requestPermission();
-                    if (permission === 'granted') {
-                        startMotionListener();
-                        if (window.onMotionPermissionGranted) {
-                            window.onMotionPermissionGranted();
-                        }
-                    } else {
-                        alert('Motion sensor permission denied. The game may not work properly.');
-                    }
-                } catch (error) {
-                    console.error('Permission request failed:', error);
-                    alert('Failed to request motion sensor permission.');
-                }
-            } else {
-                // Non-iOS devices: start motion listener immediately
-                startMotionListener();
-                if (window.onMotionPermissionGranted) {
-                    window.onMotionPermissionGranted();
-                }
-            }
-        };
-
-        // Keep the old permission button for backward compatibility (hidden by default)
-        document.getElementById("permissionBtn").addEventListener("click", async () => {
-            if (typeof DeviceMotionEvent.requestPermission === 'function') {
-                try {
-                    const permission = await DeviceMotionEvent.requestPermission();
-                    if (permission === 'granted') {
-                        document.getElementById("permissionBtn").style.display = "none";
-                        startMotionListener();
-                    } else {
-                        alert('Motion sensor permission denied');
-                    }
-                } catch (error) {
-                    console.error('Permission request failed:', error);
-                }
-            }
         });
 
         function startMotionListener() {
@@ -205,6 +179,142 @@
                 alert('Failed to share. Please try again.');
             }
         };
+
+        // Setup START button overlay for title screen
+        function setupTapEvent() {
+            let retryCount = 0;
+            const maxRetries = 100; // 10 seconds (100 * 100ms)
+
+            function trySetup() {
+                const canvas = document.querySelector('canvas');
+                if (!canvas) {
+                    retryCount++;
+                    if (retryCount < maxRetries) {
+                        console.log(`Canvas not found, retry ${retryCount}/${maxRetries}...`);
+                        setTimeout(trySetup, 100);
+                    } else {
+                        console.error('Canvas not found after max retries');
+                    }
+                    return;
+                }
+
+                console.log('Canvas found, setting up START button overlay');
+
+                const startButton = document.getElementById('startButton');
+                if (!startButton) {
+                    console.error('START button not found in HTML');
+                    return;
+                }
+
+                // Helper function to position the button
+                function positionButton() {
+                    const rect = canvas.getBoundingClientRect();
+
+                    // Game coordinates: buttonX = 125, buttonY = 600, width = 230, height = 50
+                    // Convert to screen coordinates
+                    const gameToScreenX = rect.width / 480;
+                    const gameToScreenY = rect.height / 800;
+
+                    const buttonLeft = rect.left + (125 * gameToScreenX);
+                    const buttonTop = rect.top + (600 * gameToScreenY);
+                    const buttonWidth = 230 * gameToScreenX;
+                    const buttonHeight = 50 * gameToScreenY;
+
+                    startButton.style.left = buttonLeft + 'px';
+                    startButton.style.top = buttonTop + 'px';
+                    startButton.style.width = buttonWidth + 'px';
+                    startButton.style.height = buttonHeight + 'px';
+
+                    console.log('START button positioned:', { left: buttonLeft, top: buttonTop, width: buttonWidth, height: buttonHeight });
+                }
+
+                // Position the button initially
+                positionButton();
+                startButton.style.display = 'block';
+
+                // Expose function for Go to notify when game starts
+                window.onGameStarted = function() {
+                    console.log('onGameStarted called');
+                    startButton.style.display = 'none';
+                };
+
+                // Expose function for Go to notify when back to title
+                window.onTitleScreen = function() {
+                    console.log('onTitleScreen called');
+                    startButton.style.display = 'block';
+                    positionButton();
+                };
+
+                // Helper function to start audio and notify Go side
+                function startAudioAndGame() {
+                    // Start audio context (required for iOS autoplay policy)
+                    console.log('Starting audio context...');
+                    try {
+                        if (window.startAudioContext) {
+                            window.startAudioContext();
+                            console.log('Audio context started');
+                        } else {
+                            console.log('startAudioContext not available yet');
+                        }
+                    } catch (error) {
+                        console.error('Failed to start audio:', error);
+                    }
+
+                    // Notify Go side to start the game
+                    console.log('Notifying Go side to start game...');
+                    if (window.startGameFromJS) {
+                        window.startGameFromJS();
+                        console.log('startGameFromJS called');
+                    } else {
+                        console.error('startGameFromJS not available!');
+                    }
+                }
+
+                // START button click handler
+                startButton.addEventListener('click', function(e) {
+                    console.log('START button clicked');
+
+                    if (!wasmReady) {
+                        console.log('WASM not ready');
+                        alert('ゲームを読み込み中です。少々お待ちください。');
+                        return;
+                    }
+
+                    // iOS: Request permission directly in click handler
+                    if (typeof DeviceMotionEvent.requestPermission === 'function') {
+                        console.log('iOS device, requesting motion sensor permission...');
+
+                        DeviceMotionEvent.requestPermission()
+                            .then(permission => {
+                                console.log('Permission result:', permission);
+                                if (permission === 'granted') {
+                                    console.log('Motion sensor permission granted');
+                                    startMotionListener();
+                                    startAudioAndGame();
+                                } else {
+                                    alert('センサーへのアクセスが拒否されました。ゲームをプレイできません。');
+                                }
+                            })
+                            .catch(error => {
+                                console.error('Permission request failed:', error);
+                                alert('センサーへのアクセス要求に失敗しました: ' + error.message);
+                            });
+                    } else {
+                        // Non-iOS: Start directly
+                        console.log('Non-iOS device, starting game directly');
+                        startMotionListener();
+                        startAudioAndGame();
+                    }
+                });
+
+                // Reposition button on window resize
+                window.addEventListener('resize', positionButton);
+
+                console.log('START button overlay setup complete');
+            }
+
+            trySetup();
+        }
 
     </script>
 </body>

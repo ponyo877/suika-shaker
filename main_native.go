@@ -15,10 +15,6 @@ func getAcceleration() (float64, float64, float64) {
 	return 0, 0, 0
 }
 
-func requestMotionPermission() {
-	// No-op for native builds (no permission needed)
-}
-
 func shareGameResultToX(screenshot *ebiten.Image, score int, watermelonHits int) {
 	// No-op for native builds
 	// Could potentially save screenshot to file or open system share dialog

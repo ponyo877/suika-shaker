@@ -81,33 +81,12 @@ type next struct {
 func (g *Game) Update() error {
 	g.count++
 
-	// Handle title screen interactions
+	// Handle title screen
 	if g.showTitleScreen {
-		// START button dimensions and position (same as in drawTitleScreen)
-		const (
-			buttonWidth  = 230
-			buttonHeight = 50
-		)
-		buttonX := (screenWidth - buttonWidth) / 2
-		buttonY := 600
-
-		// Mouse click detection
-		if inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonLeft) {
-			x, y := ebiten.CursorPosition()
-			if x >= buttonX && x <= buttonX+buttonWidth && y >= buttonY && y <= buttonY+buttonHeight {
-				g.startGame()
-			}
-		}
-
-		// Touch detection (for mobile/WASM)
-		touchIDs := inpututil.AppendJustPressedTouchIDs(nil)
-		for _, id := range touchIDs {
-			x, y := ebiten.TouchPosition(id)
-			if x >= buttonX && x <= buttonX+buttonWidth && y >= buttonY && y <= buttonY+buttonHeight {
-				g.startGame()
-			}
-		}
-
+		// Title screen input is handled by JavaScript (setupTapEvent in index.html)
+		// to maintain user gesture context for iOS motion sensor permissions
+		// and browser autoplay policy for audio.
+		// JavaScript will call startGameFromJS() to start the game.
 		return nil // Skip game logic when showing title screen
 	}
 
@@ -831,20 +810,6 @@ func (g *Game) drawTitleScreen(screen *ebiten.Image) {
 
 	// START text (white, centered, matching RETRY button text)
 	drawTextCentered(screen, "START", poppinsBoldSource, 28, float64(buttonX+buttonWidth/2), float64(buttonY+buttonHeight/2), whiteColor)
-}
-
-// startGame initiates the game from the title screen
-func (g *Game) startGame() {
-	// Request motion sensor permission (WASM only, will call onMotionPermissionGranted when ready)
-	requestMotionPermission()
-
-	// Hide title screen and start the game
-	g.showTitleScreen = false
-
-	// Start background music only if not muted
-	if !g.muted {
-		sound.StartBackgroundMusic()
-	}
 }
 
 // drawSpeakerButton draws the mute/unmute button in the top-right corner using images

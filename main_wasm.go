@@ -10,6 +10,7 @@ import (
 	"syscall/js"
 
 	"github.com/hajimehoshi/ebiten/v2"
+	"github.com/ponyo877/suika-shaker/assets/sound"
 )
 
 var (
@@ -29,23 +30,34 @@ func setupWASMCallbacks() {
 		return nil
 	}))
 
-	// Expose onMotionPermissionGranted function to JavaScript
-	// This is called after motion sensor permission is granted on iOS
-	js.Global().Set("onMotionPermissionGranted", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
-		// Motion sensor permission granted, game can now start
-		// No additional action needed here as the game already started
+	// Expose startGameFromJS function to JavaScript
+	// Called when JavaScript handles START button tap in user gesture context
+	js.Global().Set("startGameFromJS", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+		if currentGame != nil {
+			currentGame.showTitleScreen = false
+			// Audio will be started by JavaScript in user gesture context
+
+			// Notify JavaScript that game has started (to hide START button)
+			if js.Global().Get("onGameStarted").Truthy() {
+				js.Global().Call("onGameStarted")
+			}
+		}
+		return nil
+	}))
+
+	// Expose startAudioContext function to JavaScript
+	// Called to ensure audio context starts in user gesture context
+	js.Global().Set("startAudioContext", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+		// Start background music if not muted
+		if currentGame != nil && !currentGame.muted {
+			sound.StartBackgroundMusic()
+		}
 		return nil
 	}))
 }
 
 func getAcceleration() (float64, float64, float64) {
 	return accelerationX, accelerationY, accelerationZ
-}
-
-func requestMotionPermission() {
-	// Call JavaScript function to request motion sensor permission
-	// This function is defined in index.html
-	js.Global().Call("requestMotionPermission")
 }
 
 func shareGameResultToX(screenshot *ebiten.Image, score int, watermelonHits int) {
