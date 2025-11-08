@@ -19,3 +19,7 @@ func shareGameResultToX(screenshot *ebiten.Image, score int, watermelonHits int)
 	// No-op for native builds
 	// Could potentially save screenshot to file or open system share dialog
 }
+
+func hideShareButton() {
+	// No-op for native builds
+}

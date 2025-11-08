@@ -92,8 +92,8 @@ func (g *Game) Update() error {
 
 	g.dropCount++
 
-	// Auto-drop fruit every second (60 frames) - only if not showing game over dialog
-	if !g.showGameOverDialog && g.dropCount >= 60 {
+	// Auto-drop fruit every second (5 frames) - only if not showing game over dialog
+	if !g.showGameOverDialog && g.dropCount >= 5 {
 		g.dropAuto()
 		g.dropCount = 0
 	}
@@ -197,12 +197,7 @@ func (g *Game) Update() error {
 				y >= int(buttonY) && y <= int(buttonY+retryHeight) {
 				g.resetGame()
 			}
-			// Check X button (circle)
-			dx := float64(x) - xButtonCenterX
-			dy := float64(y) - xButtonCenterY
-			if dx*dx+dy*dy <= float64(xButtonSize*xButtonSize/4) {
-				g.shareToX()
-			}
+			// Share button is now handled by HTML overlay (no Go-side handling needed)
 		}
 
 		// Touch detection (for mobile/WASM)
@@ -214,12 +209,7 @@ func (g *Game) Update() error {
 				y >= int(buttonY) && y <= int(buttonY+retryHeight) {
 				g.resetGame()
 			}
-			// Check X button (circle)
-			dx := float64(x) - xButtonCenterX
-			dy := float64(y) - xButtonCenterY
-			if dx*dx+dy*dy <= float64(xButtonSize*xButtonSize/4) {
-				g.shareToX()
-			}
+			// Share button is now handled by HTML overlay (no Go-side handling needed)
 		}
 	}
 
@@ -266,6 +256,9 @@ func (g *Game) Draw(screen *ebiten.Image) {
 			// Create a copy of the current screen with dialog for screenshot
 			g.gameOverScreenshot = ebiten.NewImage(screenWidth, screenHeight)
 			g.gameOverScreenshot.DrawImage(screen, nil)
+
+			// Show share button with screenshot data (WASM only)
+			shareGameResultToX(g.gameOverScreenshot, g.finalScore, g.finalWatermelonHits)
 		}
 	}
 }
@@ -584,6 +577,9 @@ func (g *Game) resetGame() {
 	g.finalWatermelonHits = 0
 	g.spawnFailCount = 0
 
+	// Hide share button (WASM only)
+	hideShareButton()
+
 	// Restart background music only if not muted
 	if !g.muted {
 		sound.StartBackgroundMusic()
@@ -654,7 +650,6 @@ func (g *Game) drawGameOverDialog(screen *ebiten.Image) {
 	beigeColor := color.NRGBA{245, 230, 211, 255}  // #F5E6D3
 	darkTealColor := color.NRGBA{61, 90, 92, 255}  // #3D5A5C
 	redBrownColor := color.NRGBA{200, 90, 84, 255} // #C85A54
-	tealColor := color.NRGBA{150, 200, 200, 255}   // #bfebeaff
 	whiteColor := color.NRGBA{255, 255, 255, 255}
 
 	// Draw semi-transparent white overlay (full screen)
@@ -693,17 +688,13 @@ func (g *Game) drawGameOverDialog(screen *ebiten.Image) {
 	watermelonStr := fmt.Sprintf("%d", g.finalWatermelonHits)
 	drawTextCentered(screen, watermelonStr, poppinsBoldSource, 60, float64(centerX), float64(dialogY+290), darkTealColor)
 
-	// Button layout (RETRY button + X button side by side)
+	// Button layout (RETRY button only, share button is HTML overlay)
 	const (
-		buttonY        = dialogY + dialogHeight - 85
-		retryWidth     = 230
-		retryHeight    = 50
-		retryRadius    = 15
-		retryX         = dialogX + 25
-		xButtonSize    = 60
-		xButtonX       = retryX + retryWidth + 8
-		xButtonCenterX = xButtonX + xButtonSize/2
-		xButtonCenterY = buttonY + retryHeight/2
+		buttonY     = dialogY + dialogHeight - 85
+		retryWidth  = 230
+		retryHeight = 50
+		retryRadius = 15
+		retryX      = dialogX + 25
 	)
 
 	// Draw RETRY button (red/brown rounded rectangle)
@@ -711,15 +702,6 @@ func (g *Game) drawGameOverDialog(screen *ebiten.Image) {
 
 	// RETRY text (white, centered)
 	drawTextCentered(screen, "RETRY", poppinsBoldSource, 28, float64(retryX+retryWidth/2), float64(buttonY+retryHeight/2), whiteColor)
-
-	// Draw X button (teal circle)
-	var circlePath vector.Path
-	circlePath.Arc(xButtonCenterX, xButtonCenterY, xButtonSize/2, 0, 2*math.Pi, vector.Clockwise)
-	circlePath.Close()
-	g.drawFill(screen, circlePath, tealColor)
-
-	// Draw Twitter/X icon
-	g.drawTwitterIcon(screen, xButtonCenterX, xButtonCenterY, 40, whiteColor)
 }
 
 // createRoundedRectPath creates a path for a rounded rectangle
@@ -738,38 +720,11 @@ func (g *Game) createRoundedRectPath(x, y, width, height, radius float32) vector
 	return path
 }
 
-// drawTwitterIcon draws the share icon using share.png
-func (g *Game) drawTwitterIcon(screen *ebiten.Image, centerX, centerY, size float32, clr color.NRGBA) {
-	// Get share icon from assets
-	shareIcon := assets.GetIcon(assets.Share)
-
-	// Calculate scale to fit the icon in the specified size
-	iconBounds := shareIcon.Bounds()
-	scale := float64(size) / float64(iconBounds.Dx())
-
-	// Calculate centered position
-	scaledWidth := float64(iconBounds.Dx()) * scale
-	scaledHeight := float64(iconBounds.Dy()) * scale
-	x := float64(centerX) - scaledWidth/2
-	y := float64(centerY) - scaledHeight/2
-
-	// Draw the share icon
-	op := &ebiten.DrawImageOptions{}
-	op.Filter = ebiten.FilterLinear
-	op.GeoM.Scale(scale, scale)
-	op.GeoM.Translate(x, y)
-
-	// Apply color tint
-	op.ColorScale.ScaleWithColor(clr)
-
-	screen.DrawImage(shareIcon, op)
-}
-
 // drawTitleScreen draws the title screen with logo and start button
 func (g *Game) drawTitleScreen(screen *ebiten.Image) {
 	// Colors matching the game design
-	redBrownColor := color.NRGBA{200, 90, 84, 255} // #C85A54
-	whiteColor := color.NRGBA{255, 255, 255, 255}
+	// redBrownColor := color.NRGBA{200, 90, 84, 255} // #C85A54
+	// whiteColor := color.NRGBA{255, 255, 255, 255}
 
 	// Draw same background as game screen
 	g.drawBackground(screen)
@@ -796,20 +751,20 @@ func (g *Game) drawTitleScreen(screen *ebiten.Image) {
 	logoOp.GeoM.Translate(logoX, logoY)
 	screen.DrawImage(titleLogo, logoOp)
 
-	// START button dimensions and position (matching RETRY button style)
-	const (
-		buttonWidth  = 230
-		buttonHeight = 50
-		buttonRadius = 15
-	)
-	buttonX := float32((screenWidth - buttonWidth) / 2)
-	buttonY := float32(600)
+	// // START button dimensions and position (matching RETRY button style)
+	// const (
+	// 	buttonWidth  = 230
+	// 	buttonHeight = 50
+	// 	buttonRadius = 15
+	// )
+	// buttonX := float32((screenWidth - buttonWidth) / 2)
+	// buttonY := float32(600)
 
-	// Draw START button (red/brown rounded rectangle, matching RETRY button)
-	g.drawRoundedRect(screen, buttonX, buttonY, buttonWidth, buttonHeight, buttonRadius, redBrownColor)
+	// // Draw START button (red/brown rounded rectangle, matching RETRY button)
+	// g.drawRoundedRect(screen, buttonX, buttonY, buttonWidth, buttonHeight, buttonRadius, redBrownColor)
 
-	// START text (white, centered, matching RETRY button text)
-	drawTextCentered(screen, "START", poppinsBoldSource, 28, float64(buttonX+buttonWidth/2), float64(buttonY+buttonHeight/2), whiteColor)
+	// // START text (white, centered, matching RETRY button text)
+	// drawTextCentered(screen, "START", poppinsBoldSource, 28, float64(buttonX+buttonWidth/2), float64(buttonY+buttonHeight/2), whiteColor)
 }
 
 // drawSpeakerButton draws the mute/unmute button in the top-right corner using images

@@ -61,23 +61,48 @@ func getAcceleration() (float64, float64, float64) {
 }
 
 func shareGameResultToX(screenshot *ebiten.Image, score int, watermelonHits int) {
+	fmt.Println("shareGameResultToX called with score:", score, "watermelonHits:", watermelonHits)
+
 	if screenshot == nil {
+		fmt.Println("Error: screenshot is nil")
 		return
 	}
 
 	// Encode screenshot to PNG
+	fmt.Println("Encoding screenshot to PNG...")
 	var buf bytes.Buffer
 	if err := png.Encode(&buf, screenshot); err != nil {
 		fmt.Println("Failed to encode screenshot:", err)
 		return
 	}
+	fmt.Println("Screenshot encoded, size:", buf.Len(), "bytes")
 
 	// Convert to base64
+	fmt.Println("Converting to base64...")
 	base64Image := base64.StdEncoding.EncodeToString(buf.Bytes())
+	fmt.Println("Base64 conversion complete, length:", len(base64Image))
 
 	// Create share text
 	shareText := fmt.Sprintf("Suika Shaker - Score: %d, Watermelon Hits: %d", score, watermelonHits)
+	fmt.Println("Share text:", shareText)
 
-	// Call JavaScript function to handle sharing
-	js.Global().Call("shareToX", base64Image, shareText)
+	// Show share button with screenshot data
+	// The HTML button will handle the actual sharing in user gesture context
+	fmt.Println("Calling JavaScript showShareButton function...")
+	if js.Global().Get("showShareButton").Truthy() {
+		js.Global().Call("showShareButton", base64Image, shareText)
+		fmt.Println("JavaScript showShareButton function called")
+	} else {
+		fmt.Println("Warning: showShareButton not available")
+	}
+}
+
+func hideShareButton() {
+	fmt.Println("hideShareButton called")
+	if js.Global().Get("hideShareButton").Truthy() {
+		js.Global().Call("hideShareButton")
+		fmt.Println("JavaScript hideShareButton function called")
+	} else {
+		fmt.Println("Warning: hideShareButton not available")
+	}
 }

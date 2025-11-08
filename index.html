@@ -77,6 +77,24 @@
             outline: none;
             -webkit-tap-highlight-color: transparent;
         ">START</button>
+
+        <!-- Share button overlay for gameover screen -->
+        <button id="shareButton" style="
+            position: absolute;
+            display: none;
+            background-color: rgba(150, 200, 200, 1);
+            color: white;
+            border: none;
+            border-radius: 50%;
+            cursor: pointer;
+            z-index: 1000;
+            outline: none;
+            -webkit-tap-highlight-color: transparent;
+            padding: 0;
+            overflow: hidden;
+        ">
+            <img src="assets/image/share.png" style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 60%; height: 60%; object-fit: contain;">
+        </button>
     </div>
 
     <script src="wasm_exec.js"></script>
@@ -98,8 +116,9 @@
             // Title screen START button now handles motion permission request
             // No need to show permission button or start motion listener here
 
-            // Setup tap event
+            // Setup tap event and share button
             setupTapEvent();
+            setupShareButton();
         }).catch((err) => {
             console.error("Failed to load WASM:", err);
             document.getElementById("loading").innerHTML = "Failed to load game. Please refresh the page.";
@@ -134,10 +153,23 @@
             });
         }
 
-        // Share game result to X (Twitter)
+        // Share game result using Web Share API
         window.shareToX = async function (base64Image, shareText) {
+            console.log('shareToX called with:', {
+                imageLength: base64Image.length,
+                shareText: shareText
+            });
+
             try {
+                // Check if Web Share API is available
+                if (!navigator.share) {
+                    console.error('Web Share API not supported');
+                    alert('お使いのブラウザはシェア機能に対応していません。');
+                    return;
+                }
+
                 // Convert base64 to Blob
+                console.log('Converting base64 to blob...');
                 const byteString = atob(base64Image);
                 const ab = new ArrayBuffer(byteString.length);
                 const ia = new Uint8Array(ab);
@@ -145,40 +177,179 @@
                     ia[i] = byteString.charCodeAt(i);
                 }
                 const blob = new Blob([ab], { type: 'image/png' });
+                console.log('Blob created:', { size: blob.size, type: blob.type });
 
-                // Try Web Share API (works on mobile browsers)
-                if (navigator.share && navigator.canShare) {
-                    const file = new File([blob], 'suika-shaker-result.png', { type: 'image/png' });
-                    const shareData = {
-                        text: shareText,
-                        files: [file]
-                    };
+                // Create file from blob
+                const file = new File([blob], 'suika-shaker-result.png', { type: 'image/png' });
+                console.log('File created:', { name: file.name, size: file.size, type: file.type });
 
-                    if (navigator.canShare(shareData)) {
-                        await navigator.share(shareData);
-                        return;
-                    }
+                // Prepare share data
+                const shareData = {
+                    text: shareText + '\n\n#SuikaShaker',
+                    files: [file]
+                };
+
+                // Check if can share
+                if (!navigator.canShare) {
+                    console.warn('navigator.canShare not available, trying share anyway...');
+                } else if (!navigator.canShare(shareData)) {
+                    console.error('Cannot share this data');
+                    alert('このデータはシェアできません。');
+                    return;
                 }
 
-                // Fallback: Download image and open X post URL
-                // Download the image
-                const url = URL.createObjectURL(blob);
-                const a = document.createElement('a');
-                a.href = url;
-                a.download = 'suika-shaker-result.png';
-                document.body.appendChild(a);
-                a.click();
-                document.body.removeChild(a);
-                URL.revokeObjectURL(url);
+                // Share
+                console.log('Calling navigator.share...');
+                await navigator.share(shareData);
+                console.log('Share successful');
 
-                // Open X (Twitter) post URL with text
-                const twitterUrl = `https://twitter.com/intent/tweet?text=${encodeURIComponent(shareText + '\n\n#SuikaShaker')}`;
-                window.open(twitterUrl, '_blank');
             } catch (error) {
-                console.error('Failed to share:', error);
-                alert('Failed to share. Please try again.');
+                console.error('Share failed:', {
+                    name: error.name,
+                    message: error.message,
+                    stack: error.stack
+                });
+
+                // User-friendly error messages
+                if (error.name === 'AbortError') {
+                    console.log('User cancelled share');
+                    // Don't show alert for user cancellation
+                } else if (error.name === 'NotAllowedError') {
+                    alert('シェア機能へのアクセスが拒否されました。');
+                } else {
+                    alert('シェアに失敗しました: ' + error.message);
+                }
             }
         };
+
+        // Store screenshot data for sharing (set by Go)
+        window.gameScreenshotData = null;
+        window.gameShareText = null;
+
+        // Common helper function to calculate game-to-screen coordinates
+        // with max scale constraint to prevent oversized buttons on large screens
+        function calculateButtonPosition(canvas, gameX, gameY, gameWidth, gameHeight) {
+            const rect = canvas.getBoundingClientRect();
+
+            // Game internal resolution
+            const GAME_WIDTH = 480;
+            const GAME_HEIGHT = 800;
+
+            // Calculate scale factors
+            const scaleX = rect.width / GAME_WIDTH;
+            const scaleY = rect.height / GAME_HEIGHT;
+
+            // Use the smaller scale to maintain aspect ratio
+            // and cap at 2x to prevent oversized buttons on large screens
+            const scale = Math.min(scaleX, scaleY, 2.0);
+
+            // Calculate button position and size
+            const buttonWidth = gameWidth * scale;
+            const buttonHeight = gameHeight * scale;
+
+            // Calculate scaled game coordinates
+            const scaledGameX = gameX * scale;
+            const scaledGameY = gameY * scale;
+
+            // Calculate canvas offset (for centered canvas)
+            const canvasOffsetX = (rect.width - GAME_WIDTH * scale) / 2;
+            const canvasOffsetY = (rect.height - GAME_HEIGHT * scale) / 2;
+
+            const buttonLeft = rect.left + canvasOffsetX + scaledGameX;
+            const buttonTop = rect.top + canvasOffsetY + scaledGameY;
+
+            return {
+                left: buttonLeft,
+                top: buttonTop,
+                width: buttonWidth,
+                height: buttonHeight,
+                scale: scale
+            };
+        }
+
+        // Setup share button overlay for gameover screen
+        function setupShareButton() {
+            let retryCount = 0;
+            const maxRetries = 100; // 10 seconds
+
+            function trySetup() {
+                const canvas = document.querySelector('canvas');
+                if (!canvas) {
+                    retryCount++;
+                    if (retryCount < maxRetries) {
+                        setTimeout(trySetup, 100);
+                    } else {
+                        console.error('Canvas not found for share button setup');
+                    }
+                    return;
+                }
+
+                console.log('Canvas found, setting up share button overlay');
+
+                const shareButton = document.getElementById('shareButton');
+                if (!shareButton) {
+                    console.error('Share button not found in HTML');
+                    return;
+                }
+
+                // Helper function to position the share button
+                function positionShareButton() {
+                    // Game coordinates: center at (363, 560), size 60
+                    // Convert to top-left coordinates: x = 363 - 30 = 333, y = 560 - 30 = 530
+                    const pos = calculateButtonPosition(canvas, 333, 530, 60, 60);
+
+                    shareButton.style.left = pos.left + 'px';
+                    shareButton.style.top = pos.top + 'px';
+                    shareButton.style.width = pos.width + 'px';
+                    shareButton.style.height = pos.height + 'px';
+
+                    console.log('Share button positioned:', {
+                        left: pos.left,
+                        top: pos.top,
+                        size: pos.width,
+                        scale: pos.scale
+                    });
+                }
+
+                // Expose function for Go to show share button with data
+                window.showShareButton = function(base64Image, shareText) {
+                    console.log('showShareButton called');
+                    window.gameScreenshotData = base64Image;
+                    window.gameShareText = shareText;
+                    positionShareButton();
+                    shareButton.style.display = 'block';
+                };
+
+                // Expose function for Go to hide share button
+                window.hideShareButton = function() {
+                    console.log('hideShareButton called');
+                    shareButton.style.display = 'none';
+                    window.gameScreenshotData = null;
+                    window.gameShareText = null;
+                };
+
+                // Share button click handler
+                shareButton.addEventListener('click', async function(e) {
+                    console.log('Share button clicked');
+
+                    if (!window.gameScreenshotData || !window.gameShareText) {
+                        console.error('No screenshot data available');
+                        alert('スクリーンショットデータがありません。');
+                        return;
+                    }
+
+                    // Call shareToX with stored data (maintains user gesture context)
+                    await window.shareToX(window.gameScreenshotData, window.gameShareText);
+                });
+
+                // Reposition on window resize
+                window.addEventListener('resize', positionShareButton);
+
+                console.log('Share button overlay setup complete');
+            }
+
+            trySetup();
+        }
 
         // Setup START button overlay for title screen
         function setupTapEvent() {
@@ -208,24 +379,21 @@
 
                 // Helper function to position the button
                 function positionButton() {
-                    const rect = canvas.getBoundingClientRect();
+                    // Game coordinates: x = 125, y = 600, width = 230, height = 50
+                    const pos = calculateButtonPosition(canvas, 125, 600, 230, 50);
 
-                    // Game coordinates: buttonX = 125, buttonY = 600, width = 230, height = 50
-                    // Convert to screen coordinates
-                    const gameToScreenX = rect.width / 480;
-                    const gameToScreenY = rect.height / 800;
+                    startButton.style.left = pos.left + 'px';
+                    startButton.style.top = pos.top + 'px';
+                    startButton.style.width = pos.width + 'px';
+                    startButton.style.height = pos.height + 'px';
 
-                    const buttonLeft = rect.left + (125 * gameToScreenX);
-                    const buttonTop = rect.top + (600 * gameToScreenY);
-                    const buttonWidth = 230 * gameToScreenX;
-                    const buttonHeight = 50 * gameToScreenY;
-
-                    startButton.style.left = buttonLeft + 'px';
-                    startButton.style.top = buttonTop + 'px';
-                    startButton.style.width = buttonWidth + 'px';
-                    startButton.style.height = buttonHeight + 'px';
-
-                    console.log('START button positioned:', { left: buttonLeft, top: buttonTop, width: buttonWidth, height: buttonHeight });
+                    console.log('START button positioned:', {
+                        left: pos.left,
+                        top: pos.top,
+                        width: pos.width,
+                        height: pos.height,
+                        scale: pos.scale
+                    });
                 }
 
                 // Position the button initially
