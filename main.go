@@ -92,19 +92,21 @@ func (g *Game) Update() error {
 
 	g.dropCount++
 
-	// Auto-drop fruit every second (5 frames) - only if not showing game over dialog
-	if !g.showGameOverDialog && g.dropCount >= 5 {
+	// Auto-drop fruit every second (45 frames) - only if not showing game over dialog
+	if !g.showGameOverDialog && g.dropCount >= 45 {
 		g.dropAuto()
 		g.dropCount = 0
 	}
 
 	// Update gravity based on acceleration sensor
 	ax, ay, _ := getAcceleration()
+	// Note: JavaScript side (index.html) already inverts values for iOS/Android
+	// to normalize platform differences per W3C DeviceMotionEvent spec
 	// Acceleration sensor measures device acceleration, but gravity acts opposite
 	// When device tilts right, sensor shows left acceleration, but gravity pulls right
-	// Scale by ~50 for good game physics (typical mobile acceleration is ~9.8 m/s^2)
-	gravityX := ax * 50
-	gravityY := -ay * 50
+	// Scale by 100 for good game physics (typical mobile acceleration is ~9.8 m/s^2)
+	gravityX := ax * 100
+	gravityY := -ay * 100 // Y-axis negation converts sensor acceleration to gravity direction
 
 	// If no acceleration data (native build or sensor not active), use default gravity
 	if ax == 0 && ay == 0 {

@@ -106,6 +106,7 @@
             'requestPermission' in unknownDeviceMotionEvent &&
             typeof unknownDeviceMotionEvent.requestPermission === 'function'
         const isIOS = isWithRequestPermission;
+        const isAndroid = /android/i.test(navigator.userAgent);
 
         const go = new Go();
         WebAssembly.instantiateStreaming(fetch("main.wasm"), go.importObject).then((result) => {
@@ -133,8 +134,9 @@
                 let y = event.accelerationIncludingGravity.y || 0;
                 let z = event.accelerationIncludingGravity.z || 0;
 
-                // iOS has inverted values
-                if (isIOS) {
+                // iOS and Android have inverted values compared to the W3C spec
+                // Apply inversion to both platforms for consistent behavior
+                if (isIOS || isAndroid) {
                     x = -x;
                     y = -y;
                     z = -z;
