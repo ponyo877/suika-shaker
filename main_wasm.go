@@ -83,7 +83,8 @@ func shareGameResultToX(screenshot *ebiten.Image, score int, watermelonHits int)
 	fmt.Println("Base64 conversion complete, length:", len(base64Image))
 
 	// Create share text
-	shareText := fmt.Sprintf("Suika Shaker - Score: %d, Watermelon Hits: %d", score, watermelonHits)
+	url := "https://ponyo877.github.io/suika-shaker/"
+	shareText := fmt.Sprintf("Suika Shaker\nScore: %d\nWatermelon Hits: %d\n%s", score, watermelonHits, url)
 	fmt.Println("Share text:", shareText)
 
 	// Show share button with screenshot data

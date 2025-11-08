@@ -240,7 +240,7 @@ func (g *Game) Draw(screen *ebiten.Image) {
 		cp.DrawSpace(g.space, g.drawer.WithScreen(screen))
 	}
 	ebitenutil.DebugPrint(screen, fmt.Sprintf(
-		"FPS: %0.2f\nScore: %d\nHiScore: %d",
+		"FPS: %0.2f  The Go gopher was designed by Renee French.\nScore: %d\nHiScore: %d",
 		ebiten.ActualFPS(),
 		score,
 		hiscore,
