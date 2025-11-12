@@ -10,10 +10,10 @@ import (
 	"github.com/hajimehoshi/ebiten/v2/text/v2"
 )
 
-//go:embed fonts/Poppins-Bold.ttf
+//go:embed fonts/Poppins-Bold-subset.ttf
 var poppinsBoldTTF []byte
 
-//go:embed fonts/Poppins-Regular.ttf
+//go:embed fonts/Poppins-Regular-subset.ttf
 var poppinsRegularTTF []byte
 
 var (

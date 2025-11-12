@@ -4,7 +4,7 @@ import (
 	"bytes"
 	_ "embed"
 	"image"
-	_ "image/png"
+	_ "golang.org/x/image/webp"
 	"log"
 
 	"github.com/hajimehoshi/ebiten/v2"
@@ -26,31 +26,31 @@ const (
 )
 
 var (
-	//go:embed grape.png
-	grapePNG []byte
-	//go:embed mandarin.png
-	mandarinPNG []byte
-	//go:embed apple.png
-	applePNG []byte
-	//go:embed pear.png
-	pearPNG []byte
-	//go:embed peach.png
-	peachPNG []byte
-	//go:embed pineapple.png
-	pineapplePNG []byte
-	//go:embed melon.png
-	melonPNG []byte
-	//go:embed watermelon.png
-	watermelonPNG []byte
+	//go:embed grape.webp
+	grapeWebP []byte
+	//go:embed mandarin.webp
+	mandarinWebP []byte
+	//go:embed apple.webp
+	appleWebP []byte
+	//go:embed pear.webp
+	pearWebP []byte
+	//go:embed peach.webp
+	peachWebP []byte
+	//go:embed pineapple.webp
+	pineappleWebP []byte
+	//go:embed melon.webp
+	melonWebP []byte
+	//go:embed watermelon.webp
+	watermelonWebP []byte
 
-	//go:embed speaker.png
-	speakerPNG []byte
-	//go:embed muted.png
-	mutedPNG []byte
-	//go:embed share.png
-	sharePNG []byte
-	//go:embed titlelogo.png
-	titlelogoPNG []byte
+	//go:embed speaker.webp
+	speakerWebP []byte
+	//go:embed muted.webp
+	mutedWebP []byte
+	//go:embed share.webp
+	shareWebP []byte
+	//go:embed titlelogo.webp
+	titlelogoWebP []byte
 
 	assets map[Kind]ImageSet
 	icons  map[IconKind]*ebiten.Image
@@ -87,14 +87,14 @@ type ImageSet struct {
 }
 
 func init() {
-	grapeImg, grapeEbiten := decodeImage(grapePNG)
-	mandarinImg, mandarinEbiten := decodeImage(mandarinPNG)
-	appleImg, appleEbiten := decodeImage(applePNG)
-	pearImg, pearEbiten := decodeImage(pearPNG)
-	peachImg, peachEbiten := decodeImage(peachPNG)
-	pineappleImg, pineappleEbiten := decodeImage(pineapplePNG)
-	melonImg, melonEbiten := decodeImage(melonPNG)
-	watermelonImg, watermelonEbiten := decodeImage(watermelonPNG)
+	grapeImg, grapeEbiten := decodeImage(grapeWebP)
+	mandarinImg, mandarinEbiten := decodeImage(mandarinWebP)
+	appleImg, appleEbiten := decodeImage(appleWebP)
+	pearImg, pearEbiten := decodeImage(pearWebP)
+	peachImg, peachEbiten := decodeImage(peachWebP)
+	pineappleImg, pineappleEbiten := decodeImage(pineappleWebP)
+	melonImg, melonEbiten := decodeImage(melonWebP)
+	watermelonImg, watermelonEbiten := decodeImage(watermelonWebP)
 
 	assets = map[Kind]ImageSet{
 		Grape:      newImageSet(grapeImg, grapeEbiten, 1.0, 10),
@@ -107,10 +107,10 @@ func init() {
 		Watermelon: newImageSet(watermelonImg, watermelonEbiten, 1.0, 110),
 	}
 
-	_, speakerEbiten := decodeImage(speakerPNG)
-	_, mutedEbiten := decodeImage(mutedPNG)
-	_, shareEbiten := decodeImage(sharePNG)
-	_, titleLogoEbiten := decodeImage(titlelogoPNG)
+	_, speakerEbiten := decodeImage(speakerWebP)
+	_, mutedEbiten := decodeImage(mutedWebP)
+	_, shareEbiten := decodeImage(shareWebP)
+	_, titleLogoEbiten := decodeImage(titlelogoWebP)
 
 	icons = map[IconKind]*ebiten.Image{
 		Speaker:   speakerEbiten,

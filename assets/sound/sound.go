@@ -7,20 +7,20 @@ import (
 	"log"
 
 	"github.com/hajimehoshi/ebiten/v2/audio"
-	"github.com/hajimehoshi/ebiten/v2/audio/wav"
+	"github.com/hajimehoshi/ebiten/v2/audio/vorbis"
 )
 
 const sampleRate = 48000
 
 var (
-	//go:embed background.wav
-	backgroundWAV []byte
-	//go:embed gameover.wav
-	gameoverWAV []byte
-	//go:embed join.wav
-	joinWAV []byte
-	//go:embed suikajoin.wav
-	suikajoinWAV []byte
+	//go:embed background.ogg
+	backgroundOGG []byte
+	//go:embed gameover.ogg
+	gameoverOGG []byte
+	//go:embed join.ogg
+	joinOGG []byte
+	//go:embed suikajoin.ogg
+	suikajoinOGG []byte
 )
 
 type Manager struct {
@@ -41,7 +41,7 @@ func init() {
 func NewManager() *Manager {
 	ctx := audio.NewContext(sampleRate)
 
-	backgroundStream, err := wav.DecodeF32(bytes.NewReader(backgroundWAV))
+	backgroundStream, err := vorbis.DecodeF32(bytes.NewReader(backgroundOGG))
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -56,15 +56,15 @@ func NewManager() *Manager {
 	return &Manager{
 		context:          ctx,
 		backgroundPlayer: bgPlayer,
-		gameoverData:     decodeToBytes(gameoverWAV),
-		joinData:         decodeToBytes(joinWAV),
-		suikajoinData:    decodeToBytes(suikajoinWAV),
+		gameoverData:     decodeToBytes(gameoverOGG),
+		joinData:         decodeToBytes(joinOGG),
+		suikajoinData:    decodeToBytes(suikajoinOGG),
 		muted:            false,
 	}
 }
 
-func decodeToBytes(wavData []byte) []byte {
-	stream, err := wav.DecodeF32(bytes.NewReader(wavData))
+func decodeToBytes(oggData []byte) []byte {
+	stream, err := vorbis.DecodeF32(bytes.NewReader(oggData))
 	if err != nil {
 		log.Fatal(err)
 	}
