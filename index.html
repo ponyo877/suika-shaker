@@ -47,7 +47,7 @@
             border-radius: 5px;
             cursor: pointer;
             margin: 20px auto;
-            display: none; /* Hidden by default, title screen START button handles permission */
+            display: none;
         }
 
         #permissionBtn:hover {
@@ -61,7 +61,6 @@
         <div id="loading" style="color: white;">Loading...</div>
         <button id="permissionBtn">Enable Motion Sensor</button>
 
-        <!-- START button overlay for title screen -->
         <button id="startButton" style="
             position: absolute;
             display: none;
@@ -78,7 +77,6 @@
             -webkit-tap-highlight-color: transparent;
         ">START</button>
 
-        <!-- Share button overlay for gameover screen -->
         <button id="shareButton" style="
             position: absolute;
             display: none;
@@ -93,7 +91,8 @@
             padding: 0;
             overflow: hidden;
         ">
-            <img src="assets/image/share.png" style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 60%; height: 60%; object-fit: contain;">
+            <img src="assets/image/share.png"
+                style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 60%; height: 60%; object-fit: contain;">
         </button>
     </div>
 
@@ -114,14 +113,9 @@
             wasmReady = true;
             go.run(result.instance);
 
-            // Title screen START button now handles motion permission request
-            // No need to show permission button or start motion listener here
-
-            // Setup tap event and share button
             setupTapEvent();
             setupShareButton();
-        }).catch((err) => {
-            console.error("Failed to load WASM:", err);
+        }).catch(() => {
             document.getElementById("loading").innerHTML = "Failed to load game. Please refresh the page.";
         });
 
@@ -134,44 +128,25 @@
                 let y = event.accelerationIncludingGravity.y || 0;
                 let z = event.accelerationIncludingGravity.z || 0;
 
-                // iOS and Android have inverted values compared to the W3C spec
-                // Apply inversion to both platforms for consistent behavior
                 if (isIOS || isAndroid) {
                     x = -x;
                     y = -y;
                     z = -z;
                 }
 
-                // Send to Go
                 if (window.setAcceleration) {
                     window.setAcceleration(x, y, z);
-                }
-
-                // Debug display
-                const info = document.getElementById("sensorInfo");
-                if (info) {
-                    info.textContent = `X: ${x.toFixed(2)}, Y: ${y.toFixed(2)}, Z: ${z.toFixed(2)}`;
                 }
             });
         }
 
-        // Share game result using Web Share API
         window.shareToX = async function (base64Image, shareText) {
-            console.log('shareToX called with:', {
-                imageLength: base64Image.length,
-                shareText: shareText
-            });
-
             try {
-                // Check if Web Share API is available
                 if (!navigator.share) {
-                    console.error('Web Share API not supported');
                     alert('お使いのブラウザはシェア機能に対応していません。');
                     return;
                 }
 
-                // Convert base64 to Blob
-                console.log('Converting base64 to blob...');
                 const byteString = atob(base64Image);
                 const ab = new ArrayBuffer(byteString.length);
                 const ia = new Uint8Array(ab);
@@ -179,43 +154,25 @@
                     ia[i] = byteString.charCodeAt(i);
                 }
                 const blob = new Blob([ab], { type: 'image/png' });
-                console.log('Blob created:', { size: blob.size, type: blob.type });
 
-                // Create file from blob
                 const file = new File([blob], 'suika-shaker-result.png', { type: 'image/png' });
-                console.log('File created:', { name: file.name, size: file.size, type: file.type });
 
-                // Prepare share data
                 const shareData = {
                     text: shareText + '\n\n#SuikaShaker',
                     files: [file]
                 };
 
-                // Check if can share
                 if (!navigator.canShare) {
-                    console.warn('navigator.canShare not available, trying share anyway...');
+                    alert('お使いのブラウザはシェア機能に対応していません。');
                 } else if (!navigator.canShare(shareData)) {
-                    console.error('Cannot share this data');
                     alert('このデータはシェアできません。');
                     return;
                 }
 
-                // Share
-                console.log('Calling navigator.share...');
                 await navigator.share(shareData);
-                console.log('Share successful');
 
             } catch (error) {
-                console.error('Share failed:', {
-                    name: error.name,
-                    message: error.message,
-                    stack: error.stack
-                });
-
-                // User-friendly error messages
                 if (error.name === 'AbortError') {
-                    console.log('User cancelled share');
-                    // Don't show alert for user cancellation
                 } else if (error.name === 'NotAllowedError') {
                     alert('シェア機能へのアクセスが拒否されました。');
                 } else {
@@ -224,36 +181,26 @@
             }
         };
 
-        // Store screenshot data for sharing (set by Go)
         window.gameScreenshotData = null;
         window.gameShareText = null;
 
-        // Common helper function to calculate game-to-screen coordinates
-        // with max scale constraint to prevent oversized buttons on large screens
         function calculateButtonPosition(canvas, gameX, gameY, gameWidth, gameHeight) {
             const rect = canvas.getBoundingClientRect();
 
-            // Game internal resolution
             const GAME_WIDTH = 480;
             const GAME_HEIGHT = 800;
 
-            // Calculate scale factors
             const scaleX = rect.width / GAME_WIDTH;
             const scaleY = rect.height / GAME_HEIGHT;
 
-            // Use the smaller scale to maintain aspect ratio
-            // and cap at 2x to prevent oversized buttons on large screens
             const scale = Math.min(scaleX, scaleY, 2.0);
 
-            // Calculate button position and size
             const buttonWidth = gameWidth * scale;
             const buttonHeight = gameHeight * scale;
 
-            // Calculate scaled game coordinates
             const scaledGameX = gameX * scale;
             const scaledGameY = gameY * scale;
 
-            // Calculate canvas offset (for centered canvas)
             const canvasOffsetX = (rect.width - GAME_WIDTH * scale) / 2;
             const canvasOffsetY = (rect.height - GAME_HEIGHT * scale) / 2;
 
@@ -269,10 +216,9 @@
             };
         }
 
-        // Setup share button overlay for gameover screen
         function setupShareButton() {
             let retryCount = 0;
-            const maxRetries = 100; // 10 seconds
+            const maxRetries = 100;
 
             function trySetup() {
                 const canvas = document.querySelector('canvas');
@@ -280,185 +226,115 @@
                     retryCount++;
                     if (retryCount < maxRetries) {
                         setTimeout(trySetup, 100);
-                    } else {
-                        console.error('Canvas not found for share button setup');
                     }
                     return;
                 }
 
-                console.log('Canvas found, setting up share button overlay');
-
                 const shareButton = document.getElementById('shareButton');
                 if (!shareButton) {
-                    console.error('Share button not found in HTML');
                     return;
                 }
 
-                // Helper function to position the share button
                 function positionShareButton() {
-                    // Game coordinates: center at (363, 560), size 60
-                    // Convert to top-left coordinates: x = 363 - 30 = 333, y = 560 - 30 = 530
                     const pos = calculateButtonPosition(canvas, 333, 530, 60, 60);
 
                     shareButton.style.left = pos.left + 'px';
                     shareButton.style.top = pos.top + 'px';
                     shareButton.style.width = pos.width + 'px';
                     shareButton.style.height = pos.height + 'px';
-
-                    console.log('Share button positioned:', {
-                        left: pos.left,
-                        top: pos.top,
-                        size: pos.width,
-                        scale: pos.scale
-                    });
                 }
 
-                // Expose function for Go to show share button with data
-                window.showShareButton = function(base64Image, shareText) {
-                    console.log('showShareButton called');
+                window.showShareButton = function (base64Image, shareText) {
                     window.gameScreenshotData = base64Image;
                     window.gameShareText = shareText;
                     positionShareButton();
                     shareButton.style.display = 'block';
                 };
 
-                // Expose function for Go to hide share button
-                window.hideShareButton = function() {
-                    console.log('hideShareButton called');
+                window.hideShareButton = function () {
                     shareButton.style.display = 'none';
                     window.gameScreenshotData = null;
                     window.gameShareText = null;
                 };
 
-                // Share button click handler
-                shareButton.addEventListener('click', async function(e) {
-                    console.log('Share button clicked');
-
+                shareButton.addEventListener('click', async function (e) {
                     if (!window.gameScreenshotData || !window.gameShareText) {
-                        console.error('No screenshot data available');
                         alert('スクリーンショットデータがありません。');
                         return;
                     }
 
-                    // Call shareToX with stored data (maintains user gesture context)
                     await window.shareToX(window.gameScreenshotData, window.gameShareText);
                 });
 
-                // Reposition on window resize
                 window.addEventListener('resize', positionShareButton);
-
-                console.log('Share button overlay setup complete');
             }
 
             trySetup();
         }
 
-        // Setup START button overlay for title screen
         function setupTapEvent() {
             let retryCount = 0;
-            const maxRetries = 100; // 10 seconds (100 * 100ms)
+            const maxRetries = 100;
 
             function trySetup() {
                 const canvas = document.querySelector('canvas');
                 if (!canvas) {
                     retryCount++;
                     if (retryCount < maxRetries) {
-                        console.log(`Canvas not found, retry ${retryCount}/${maxRetries}...`);
                         setTimeout(trySetup, 100);
-                    } else {
-                        console.error('Canvas not found after max retries');
                     }
                     return;
                 }
 
-                console.log('Canvas found, setting up START button overlay');
-
                 const startButton = document.getElementById('startButton');
                 if (!startButton) {
-                    console.error('START button not found in HTML');
                     return;
                 }
 
-                // Helper function to position the button
                 function positionButton() {
-                    // Game coordinates: x = 125, y = 600, width = 230, height = 50
                     const pos = calculateButtonPosition(canvas, 125, 600, 230, 50);
 
                     startButton.style.left = pos.left + 'px';
                     startButton.style.top = pos.top + 'px';
                     startButton.style.width = pos.width + 'px';
                     startButton.style.height = pos.height + 'px';
-
-                    console.log('START button positioned:', {
-                        left: pos.left,
-                        top: pos.top,
-                        width: pos.width,
-                        height: pos.height,
-                        scale: pos.scale
-                    });
                 }
 
-                // Position the button initially
                 positionButton();
                 startButton.style.display = 'block';
 
-                // Expose function for Go to notify when game starts
-                window.onGameStarted = function() {
-                    console.log('onGameStarted called');
+                window.onGameStarted = function () {
                     startButton.style.display = 'none';
                 };
 
-                // Expose function for Go to notify when back to title
-                window.onTitleScreen = function() {
-                    console.log('onTitleScreen called');
+                window.onTitleScreen = function () {
                     startButton.style.display = 'block';
                     positionButton();
                 };
 
-                // Helper function to start audio and notify Go side
                 function startAudioAndGame() {
-                    // Start audio context (required for iOS autoplay policy)
-                    console.log('Starting audio context...');
                     try {
                         if (window.startAudioContext) {
                             window.startAudioContext();
-                            console.log('Audio context started');
-                        } else {
-                            console.log('startAudioContext not available yet');
                         }
                     } catch (error) {
-                        console.error('Failed to start audio:', error);
                     }
 
-                    // Notify Go side to start the game
-                    console.log('Notifying Go side to start game...');
                     if (window.startGameFromJS) {
                         window.startGameFromJS();
-                        console.log('startGameFromJS called');
-                    } else {
-                        console.error('startGameFromJS not available!');
                     }
                 }
 
-                // START button click handler
-                startButton.addEventListener('click', function(e) {
-                    console.log('START button clicked');
-
+                startButton.addEventListener('click', function (e) {
                     if (!wasmReady) {
-                        console.log('WASM not ready');
                         alert('ゲームを読み込み中です。少々お待ちください。');
                         return;
                     }
 
-                    // iOS: Request permission directly in click handler
                     if (typeof DeviceMotionEvent.requestPermission === 'function') {
-                        console.log('iOS device, requesting motion sensor permission...');
-
                         DeviceMotionEvent.requestPermission()
                             .then(permission => {
-                                console.log('Permission result:', permission);
                                 if (permission === 'granted') {
-                                    console.log('Motion sensor permission granted');
                                     startMotionListener();
                                     startAudioAndGame();
                                 } else {
@@ -466,21 +342,15 @@
                                 }
                             })
                             .catch(error => {
-                                console.error('Permission request failed:', error);
                                 alert('センサーへのアクセス要求に失敗しました: ' + error.message);
                             });
                     } else {
-                        // Non-iOS: Start directly
-                        console.log('Non-iOS device, starting game directly');
                         startMotionListener();
                         startAudioAndGame();
                     }
                 });
 
-                // Reposition button on window resize
                 window.addEventListener('resize', positionButton);
-
-                console.log('START button overlay setup complete');
             }
 
             trySetup();

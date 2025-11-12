@@ -20,7 +20,6 @@ import (
 	"github.com/hajimehoshi/ebiten/v2/vector"
 	assets "github.com/ponyo877/suika-shaker/assets/image"
 	"github.com/ponyo877/suika-shaker/assets/sound"
-	"golang.org/x/image/font/opentype"
 
 	"github.com/jakecoffman/cp/v2"
 )
@@ -35,10 +34,9 @@ var (
 	bgImage              = ebiten.NewImage(100, 50)
 	score                = 0
 	hiscore              = 0
-	watermelonCollisions = 0 // Track watermelon-to-watermelon collisions
+	watermelonCollisions = 0
 	currentGame          *Game
 
-	// Font sources for dialog
 	poppinsBoldSource    *text.GoTextFaceSource
 	poppinsRegularSource *text.GoTextFaceSource
 )
@@ -48,27 +46,27 @@ const (
 	screenHeight     = 800
 	containerHeight  = 800
 	paddingBottom    = 0
-	maxSpawnFailures = 3  // Maximum consecutive spawn failures before game over
-	spawnCheckRadius = 40 // Collision check radius for spawn position (Grape radius)
+	maxSpawnFailures = 3
+	spawnCheckRadius = 40
 )
 
 type Game struct {
 	count          int
-	dropCount      int // Counter for auto-dropping fruits every second
-	spawnFailCount int // Counter for consecutive spawn failures
+	dropCount      int
+	spawnFailCount int
 	space          *cp.Space
 	drawer         *ebitencp.Drawer
 	next           next
 
 	debug               bool
 	gameOver            bool
-	gameOverSE          bool          // Flag to ensure game over sound plays only once
-	muted               bool          // Mute state for audio
-	showGameOverDialog  bool          // Flag to show game over dialog
-	showTitleScreen     bool          // Flag to show title screen
-	gameOverScreenshot  *ebiten.Image // Screenshot captured at game over
-	finalScore          int           // Score at game over
-	finalWatermelonHits int           // Watermelon collisions at game over
+	gameOverSE          bool
+	muted               bool
+	showGameOverDialog  bool
+	showTitleScreen     bool
+	gameOverScreenshot  *ebiten.Image
+	finalScore          int
+	finalWatermelonHits int
 }
 
 type next struct {
@@ -81,34 +79,21 @@ type next struct {
 func (g *Game) Update() error {
 	g.count++
 
-	// Handle title screen
 	if g.showTitleScreen {
-		// Title screen input is handled by JavaScript (setupTapEvent in index.html)
-		// to maintain user gesture context for iOS motion sensor permissions
-		// and browser autoplay policy for audio.
-		// JavaScript will call startGameFromJS() to start the game.
-		return nil // Skip game logic when showing title screen
+		return nil
 	}
 
 	g.dropCount++
 
-	// Auto-drop fruit every second (45 frames) - only if not showing game over dialog
 	if !g.showGameOverDialog && g.dropCount >= 45 {
 		g.dropAuto()
 		g.dropCount = 0
 	}
 
-	// Update gravity based on acceleration sensor
 	ax, ay, _ := getAcceleration()
-	// Note: JavaScript side (index.html) already inverts values for iOS/Android
-	// to normalize platform differences per W3C DeviceMotionEvent spec
-	// Acceleration sensor measures device acceleration, but gravity acts opposite
-	// When device tilts right, sensor shows left acceleration, but gravity pulls right
-	// Scale by 100 for good game physics (typical mobile acceleration is ~9.8 m/s^2)
 	gravityX := ax * 100
-	gravityY := -ay * 100 // Y-axis negation converts sensor acceleration to gravity direction
+	gravityY := -ay * 100
 
-	// If no acceleration data (native build or sensor not active), use default gravity
 	if ax == 0 && ay == 0 {
 		gravityY = 500
 	}
@@ -128,15 +113,12 @@ func (g *Game) Update() error {
 		}
 	})
 
-	// Handle game over state
 	if g.gameOver && !g.showGameOverDialog {
-		// Show dialog instead of immediate reset
 		g.showGameOverDialog = true
 		g.finalScore = score
 		g.finalWatermelonHits = watermelonCollisions
 		hiscore = int(math.Max(float64(score), float64(hiscore)))
 
-		// Stop all fruits from moving
 		g.space.EachBody(func(body *cp.Body) {
 			if body.UserData != nil {
 				body.SetVelocity(0, 0)
@@ -147,14 +129,12 @@ func (g *Game) Update() error {
 
 	g.next.angle += 0.01
 
-	// Handle speaker button click/touch
 	const (
 		buttonX    = screenWidth - 60
 		buttonY    = 10
 		buttonSize = 50
 	)
 
-	// Mouse click detection
 	if inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonLeft) {
 		x, y := ebiten.CursorPosition()
 		if x >= buttonX && x <= buttonX+buttonSize && y >= buttonY && y <= buttonY+buttonSize {
@@ -163,7 +143,6 @@ func (g *Game) Update() error {
 		}
 	}
 
-	// Touch detection (for mobile/WASM)
 	touchIDs := inpututil.AppendJustPressedTouchIDs(nil)
 	for _, id := range touchIDs {
 		x, y := ebiten.TouchPosition(id)
@@ -173,7 +152,6 @@ func (g *Game) Update() error {
 		}
 	}
 
-	// Handle game over dialog button clicks
 	if g.showGameOverDialog {
 		const (
 			dialogWidth  = 340
@@ -191,27 +169,21 @@ func (g *Game) Update() error {
 			xButtonCenterY = buttonY + retryHeight/2
 		)
 
-		// Mouse click detection
 		if inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonLeft) {
 			x, y := ebiten.CursorPosition()
-			// Check Retry button
 			if x >= int(retryX) && x <= int(retryX+retryWidth) &&
 				y >= int(buttonY) && y <= int(buttonY+retryHeight) {
 				g.resetGame()
 			}
-			// Share button is now handled by HTML overlay (no Go-side handling needed)
 		}
 
-		// Touch detection (for mobile/WASM)
 		touchIDs := inpututil.AppendJustPressedTouchIDs(nil)
 		for _, id := range touchIDs {
 			x, y := ebiten.TouchPosition(id)
-			// Check Retry button
 			if x >= int(retryX) && x <= int(retryX+retryWidth) &&
 				y >= int(buttonY) && y <= int(buttonY+retryHeight) {
 				g.resetGame()
 			}
-			// Share button is now handled by HTML overlay (no Go-side handling needed)
 		}
 	}
 
@@ -221,7 +193,6 @@ func (g *Game) Update() error {
 }
 
 func (g *Game) Draw(screen *ebiten.Image) {
-	// Show title screen instead of game if showTitleScreen is true
 	if g.showTitleScreen {
 		g.drawTitleScreen(screen)
 		return
@@ -249,17 +220,13 @@ func (g *Game) Draw(screen *ebiten.Image) {
 	// Draw speaker/mute button in top-right corner
 	g.drawSpeakerButton(screen)
 
-	// Draw game over dialog if active
 	if g.showGameOverDialog {
 		g.drawGameOverDialog(screen)
 
-		// Capture screenshot after dialog is drawn (on first frame)
 		if g.gameOverScreenshot == nil {
-			// Create a copy of the current screen with dialog for screenshot
 			g.gameOverScreenshot = ebiten.NewImage(screenWidth, screenHeight)
 			g.gameOverScreenshot.DrawImage(screen, nil)
 
-			// Show share button with screenshot data (WASM only)
 			shareGameResultToX(g.gameOverScreenshot, g.finalScore, g.finalWatermelonHits)
 		}
 	}
@@ -270,16 +237,9 @@ func (g *Game) Layout(outsideWidth, outsideHeight int) (int, int) {
 }
 
 func (g *Game) dropAuto() {
-	// Generate random x position for dropping (between 50 and screenWidth-50 to avoid walls)
-	// randomX := float64(rand.Intn(screenWidth-100) + 50)
-	// randomY := g.next.y
-
-	// Check if we can spawn at this position
 	if !g.canSpawnAt(g.next.x, g.next.y, spawnCheckRadius) {
-		// Cannot spawn - increment fail counter
 		g.spawnFailCount++
 		if g.spawnFailCount >= maxSpawnFailures {
-			// Trigger game over
 			if !g.gameOver {
 				g.gameOver = true
 			}
@@ -292,7 +252,6 @@ func (g *Game) dropAuto() {
 		return
 	}
 
-	// Reset fail counter on successful spawn
 	g.spawnFailCount = 0
 
 	k := g.next.kind
@@ -303,7 +262,6 @@ func (g *Game) dropAuto() {
 	}
 	g.space.AddPostStepCallback(addShapeCallback, k, addShapeOptions)
 
-	// Set next fruit with random position
 	g.next.kind = assets.Kind(rand.Intn(2) + int(assets.Min))
 	g.next.x = float64(rand.Intn(screenWidth-100) + 50)
 	g.next.y = float64(rand.Intn(screenHeight-100) + 50)
@@ -348,35 +306,23 @@ func (g *Game) drawFill(screen *ebiten.Image, path vector.Path, c color.NRGBA) {
 
 func init() {
 	// Load fonts
-	boldFont, err := opentype.Parse(poppinsBoldTTF)
-	if err != nil {
-		log.Fatal(err)
-	}
+	var err error
 	poppinsBoldSource, err = text.NewGoTextFaceSource(bytes.NewReader(poppinsBoldTTF))
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	regularFont, err := opentype.Parse(poppinsRegularTTF)
-	if err != nil {
-		log.Fatal(err)
-	}
 	poppinsRegularSource, err = text.NewGoTextFaceSource(bytes.NewReader(poppinsRegularTTF))
 	if err != nil {
 		log.Fatal(err)
 	}
-
-	_, _ = boldFont, regularFont // Suppress unused variable warnings
 }
 
 func main() {
-	// Setup WASM callbacks before starting the game
 	setupWASMCallbacks()
 
-	// chipmunk init
 	space := cp.NewSpace()
 	space.Iterations = 30
-	// Initial gravity will be set in Update() based on sensor data
 	space.SetGravity(cp.Vector{X: 0, Y: 500})
 	space.SleepTimeThreshold = 0.5
 	space.SetDamping(1)
@@ -398,7 +344,6 @@ func main() {
 		space.NewCollisionHandler(ct, ct).BeginFunc = BeginFunc
 	})
 
-	// ebitengine init
 	bgImage.Fill(color.Black)
 
 	game := &Game{}
@@ -406,12 +351,9 @@ func main() {
 	game.drawer = ebitencp.NewDrawer(screenWidth, screenHeight)
 	game.drawer.FlipYAxis = true
 	game.next = next{kind: assets.Grape, x: screenWidth / 2, y: screenHeight - containerHeight + 10, angle: 0}
-	game.showTitleScreen = true // Show title screen at startup
+	game.showTitleScreen = true
 
-	// Set global game reference for WASM callbacks
 	currentGame = game
-
-	// Don't start background music here - it will be started when user presses START button
 
 	ebiten.SetWindowSize(screenWidth, screenHeight)
 	ebiten.SetWindowTitle("Suika Shaker")
@@ -436,7 +378,6 @@ func addFruit(space *cp.Space, k assets.Kind, position cp.Vector, angle float64)
 	fruit.SetFriction(0.9)
 	fruit.SetCollisionType(cp.CollisionType(k))
 
-	// Ensure collision detection is active immediately by reindexing the body's shapes
 	body.Activate()
 	space.ReindexShape(fruit)
 }
@@ -491,7 +432,6 @@ func BeginFunc(arb *cp.Arbiter, space *cp.Space, data interface{}) bool {
 		return false
 	}
 
-	// Check if both shapes are watermelons (track watermelon collisions)
 	var k2 assets.Kind
 	if ud2, ok := shape2.Body().UserData.(assets.Kind); ok {
 		k2 = ud2
@@ -505,7 +445,6 @@ func BeginFunc(arb *cp.Arbiter, space *cp.Space, data interface{}) bool {
 
 	score += k.Score()
 
-	// Play sound effect based on fruit type
 	if k == assets.Melon || k == assets.Watermelon {
 		sound.PlaySuikaJoin()
 	} else {
@@ -529,46 +468,27 @@ func BeginFunc(arb *cp.Arbiter, space *cp.Space, data interface{}) bool {
 	return false
 }
 
-// canSpawnAt checks if a fruit can be spawned at the given position without colliding
 func (g *Game) canSpawnAt(x, y, radius float64) bool {
-	// Use PointQueryNearest to find the nearest shape within radius
 	info := g.space.PointQueryNearest(cp.Vector{X: x, Y: y}, radius, cp.ShapeFilter{})
 
-	// If no shape found within radius, position is clear
 	if info.Shape == nil {
 		return true
 	}
 
-	// Check if the nearest shape is a fruit (not a wall)
-	// Walls have nil UserData, fruits have Kind as UserData
 	if info.Shape.Body().UserData != nil {
-		return false // Collision with fruit detected
+		return false
 	}
 
-	return true // Only walls nearby, position is OK for spawning
+	return true
 }
 
-// countFruits counts the total number of fruits currently on screen
-func (g *Game) countFruits() int {
-	count := 0
-	g.space.EachBody(func(body *cp.Body) {
-		if body.UserData != nil {
-			count++
-		}
-	})
-	return count
-}
-
-// resetGame resets the game state and starts a new game
 func (g *Game) resetGame() {
-	// Remove all fruits from the game
 	g.space.EachShape(func(shape *cp.Shape) {
 		if shape.Body().UserData != nil {
 			g.space.AddPostStepCallback(removeShapeCallback, shape, nil)
 		}
 	})
 
-	// Reset game state
 	score = 0
 	watermelonCollisions = 0
 	g.gameOver = false
@@ -579,29 +499,19 @@ func (g *Game) resetGame() {
 	g.finalWatermelonHits = 0
 	g.spawnFailCount = 0
 
-	// Hide share button (WASM only)
 	hideShareButton()
 
-	// Restart background music only if not muted
 	if !g.muted {
 		sound.StartBackgroundMusic()
 	}
 }
 
-// shareToX shares the game result to X (Twitter) with screenshot
-func (g *Game) shareToX() {
-	// This will be implemented with WASM-specific code
-	shareGameResultToX(g.gameOverScreenshot, g.finalScore, g.finalWatermelonHits)
-}
-
-// drawTextCentered draws text centered horizontally at the given position
 func drawTextCentered(screen *ebiten.Image, str string, source *text.GoTextFaceSource, size float64, x, y float64, clr color.Color) {
 	face := &text.GoTextFace{
 		Source: source,
 		Size:   size,
 	}
 
-	// Calculate text width to center it
 	textWidth, textHeight := text.Measure(str, face, 0)
 
 	op := &text.DrawOptions{}
@@ -610,34 +520,23 @@ func drawTextCentered(screen *ebiten.Image, str string, source *text.GoTextFaceS
 	text.Draw(screen, str, face, op)
 }
 
-// drawRoundedRect draws a rounded rectangle with the given parameters
 func (g *Game) drawRoundedRect(screen *ebiten.Image, x, y, width, height, radius float32, clr color.NRGBA) {
 	var path vector.Path
 
-	// Start from top-left corner (after radius)
 	path.MoveTo(x+radius, y)
-	// Top edge
 	path.LineTo(x+width-radius, y)
-	// Top-right arc
 	path.ArcTo(x+width, y, x+width, y+radius, radius)
-	// Right edge
 	path.LineTo(x+width, y+height-radius)
-	// Bottom-right arc
 	path.ArcTo(x+width, y+height, x+width-radius, y+height, radius)
-	// Bottom edge
 	path.LineTo(x+radius, y+height)
-	// Bottom-left arc
 	path.ArcTo(x, y+height, x, y+height-radius, radius)
-	// Left edge
 	path.LineTo(x, y+radius)
-	// Top-left arc
 	path.ArcTo(x, y, x+radius, y, radius)
 	path.Close()
 
 	g.drawFill(screen, path, clr)
 }
 
-// drawGameOverDialog draws the game over dialog matching the design image
 func (g *Game) drawGameOverDialog(screen *ebiten.Image) {
 	const (
 		dialogWidth  = 340
@@ -648,13 +547,11 @@ func (g *Game) drawGameOverDialog(screen *ebiten.Image) {
 		radius       = 25
 	)
 
-	// Colors from the design
 	beigeColor := color.NRGBA{245, 230, 211, 255}  // #F5E6D3
 	darkTealColor := color.NRGBA{61, 90, 92, 255}  // #3D5A5C
 	redBrownColor := color.NRGBA{200, 90, 84, 255} // #C85A54
 	whiteColor := color.NRGBA{255, 255, 255, 255}
 
-	// Draw semi-transparent white overlay (full screen)
 	var overlayPath vector.Path
 	overlayPath.MoveTo(0, 0)
 	overlayPath.LineTo(screenWidth, 0)
@@ -662,35 +559,26 @@ func (g *Game) drawGameOverDialog(screen *ebiten.Image) {
 	overlayPath.LineTo(0, screenHeight)
 	overlayPath.Close()
 
-	g.drawFill(screen, overlayPath, color.NRGBA{255, 255, 255, 178}) // 0.7 alpha = 178
+	g.drawFill(screen, overlayPath, color.NRGBA{255, 255, 255, 178})
 
-	// Draw beige background with dark teal border
 	g.drawRoundedRect(screen, dialogX, dialogY, dialogWidth, dialogHeight, radius, beigeColor)
 
-	// Draw border (stroke)
 	g.drawLine(screen, g.createRoundedRectPath(dialogX, dialogY, dialogWidth, dialogHeight, radius), darkTealColor, borderWidth)
 
-	// Draw text content
 	centerX := dialogX + dialogWidth/2
 
-	// "GAME OVER" - red/brown, large
 	drawTextCentered(screen, "GAME OVER", poppinsBoldSource, 42, float64(centerX), float64(dialogY+60), redBrownColor)
 
-	// "SCORE" label - dark teal, small
 	drawTextCentered(screen, "SCORE", poppinsBoldSource, 18, float64(centerX), float64(dialogY+120), darkTealColor)
 
-	// Score value - dark teal, large
 	scoreStr := fmt.Sprintf("%d", g.finalScore)
 	drawTextCentered(screen, scoreStr, poppinsBoldSource, 60, float64(centerX), float64(dialogY+175), darkTealColor)
 
-	// "WATERMELONS DESTROYED" label - dark teal, small
 	drawTextCentered(screen, "WATERMELONS HITS", poppinsBoldSource, 16, float64(centerX), float64(dialogY+235), darkTealColor)
 
-	// Watermelon count - dark teal, large
 	watermelonStr := fmt.Sprintf("%d", g.finalWatermelonHits)
 	drawTextCentered(screen, watermelonStr, poppinsBoldSource, 60, float64(centerX), float64(dialogY+290), darkTealColor)
 
-	// Button layout (RETRY button only, share button is HTML overlay)
 	const (
 		buttonY     = dialogY + dialogHeight - 85
 		retryWidth  = 230
@@ -699,14 +587,11 @@ func (g *Game) drawGameOverDialog(screen *ebiten.Image) {
 		retryX      = dialogX + 25
 	)
 
-	// Draw RETRY button (red/brown rounded rectangle)
 	g.drawRoundedRect(screen, retryX, buttonY, retryWidth, retryHeight, retryRadius, redBrownColor)
 
-	// RETRY text (white, centered)
 	drawTextCentered(screen, "RETRY", poppinsBoldSource, 28, float64(retryX+retryWidth/2), float64(buttonY+retryHeight/2), whiteColor)
 }
 
-// createRoundedRectPath creates a path for a rounded rectangle
 func (g *Game) createRoundedRectPath(x, y, width, height, radius float32) vector.Path {
 	var path vector.Path
 	path.MoveTo(x+radius, y)
@@ -722,54 +607,29 @@ func (g *Game) createRoundedRectPath(x, y, width, height, radius float32) vector
 	return path
 }
 
-// drawTitleScreen draws the title screen with logo and start button
 func (g *Game) drawTitleScreen(screen *ebiten.Image) {
-	// Colors matching the game design
-	// redBrownColor := color.NRGBA{200, 90, 84, 255} // #C85A54
-	// whiteColor := color.NRGBA{255, 255, 255, 255}
-
-	// Draw same background as game screen
 	g.drawBackground(screen)
 
-	// Get title logo
 	titleLogo := assets.GetIcon(assets.TitleLogo)
 	titleLogoBounds := titleLogo.Bounds()
 
-	// Calculate logo scale and position (centered, upper part of screen)
 	const maxLogoWidth = 400.0
 	logoScale := maxLogoWidth / float64(titleLogoBounds.Dx())
 	if logoScale > 1.5 {
-		logoScale = 1.5 // Cap the scale to avoid too large logo
+		logoScale = 1.5
 	}
 
 	scaledLogoWidth := float64(titleLogoBounds.Dx()) * logoScale
 	logoX := (screenWidth - scaledLogoWidth) / 2
 	logoY := 120.0
 
-	// Draw title logo
 	logoOp := &ebiten.DrawImageOptions{}
 	logoOp.Filter = ebiten.FilterLinear
 	logoOp.GeoM.Scale(logoScale, logoScale)
 	logoOp.GeoM.Translate(logoX, logoY)
 	screen.DrawImage(titleLogo, logoOp)
-
-	// // START button dimensions and position (matching RETRY button style)
-	// const (
-	// 	buttonWidth  = 230
-	// 	buttonHeight = 50
-	// 	buttonRadius = 15
-	// )
-	// buttonX := float32((screenWidth - buttonWidth) / 2)
-	// buttonY := float32(600)
-
-	// // Draw START button (red/brown rounded rectangle, matching RETRY button)
-	// g.drawRoundedRect(screen, buttonX, buttonY, buttonWidth, buttonHeight, buttonRadius, redBrownColor)
-
-	// // START text (white, centered, matching RETRY button text)
-	// drawTextCentered(screen, "START", poppinsBoldSource, 28, float64(buttonX+buttonWidth/2), float64(buttonY+buttonHeight/2), whiteColor)
 }
 
-// drawSpeakerButton draws the mute/unmute button in the top-right corner using images
 func (g *Game) drawSpeakerButton(screen *ebiten.Image) {
 	const (
 		buttonX    = screenWidth - 60
@@ -777,7 +637,6 @@ func (g *Game) drawSpeakerButton(screen *ebiten.Image) {
 		buttonSize = 50
 	)
 
-	// Choose the appropriate icon
 	var icon *ebiten.Image
 	if g.muted {
 		icon = assets.GetIcon(assets.Muted)
@@ -785,19 +644,16 @@ func (g *Game) drawSpeakerButton(screen *ebiten.Image) {
 		icon = assets.GetIcon(assets.Speaker)
 	}
 
-	// Calculate scale to fit the icon in the button size
 	iconBounds := icon.Bounds()
 	scaleX := float64(buttonSize) / float64(iconBounds.Dx())
 	scaleY := float64(buttonSize) / float64(iconBounds.Dy())
 	scale := math.Min(scaleX, scaleY)
 
-	// Center the icon
 	scaledWidth := float64(iconBounds.Dx()) * scale
 	scaledHeight := float64(iconBounds.Dy()) * scale
 	offsetX := (float64(buttonSize) - scaledWidth) / 2
 	offsetY := (float64(buttonSize) - scaledHeight) / 2
 
-	// Draw the icon
 	op := &ebiten.DrawImageOptions{}
 	op.Filter = ebiten.FilterLinear
 	op.GeoM.Scale(scale, scale)
