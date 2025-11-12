@@ -10,52 +10,59 @@ import (
 	"github.com/hajimehoshi/ebiten/v2/audio/wav"
 )
 
-const (
-	sampleRate = 48000
-)
+const sampleRate = 48000
 
 var (
 	//go:embed background.wav
-	background_wav []byte
+	backgroundWAV []byte
 	//go:embed gameover.wav
-	gameover_wav []byte
+	gameoverWAV []byte
 	//go:embed join.wav
-	join_wav []byte
+	joinWAV []byte
 	//go:embed suikajoin.wav
-	suikajoin_wav []byte
+	suikajoinWAV []byte
+)
 
-	AudioContext     *audio.Context
-	BackgroundPlayer *audio.Player
+type Manager struct {
+	context          *audio.Context
+	backgroundPlayer *audio.Player
 	gameoverData     []byte
 	joinData         []byte
 	suikajoinData    []byte
-
-	Muted bool = false // Global mute state
-)
-
-func init() {
-	AudioContext = audio.NewContext(sampleRate)
-
-	// Load background music
-	backgroundStream, err := wav.DecodeF32(bytes.NewReader(background_wav))
-	if err != nil {
-		log.Fatal(err)
-	}
-	// Create infinite loop for background music
-	loopStream := audio.NewInfiniteLoop(backgroundStream, backgroundStream.Length())
-	BackgroundPlayer, err = AudioContext.NewPlayerF32(loopStream)
-	if err != nil {
-		log.Fatal(err)
-	}
-	BackgroundPlayer.SetVolume(0.3) // Set lower volume for background music
-
-	// Pre-decode sound effects into bytes for quick playback
-	gameoverData = decodeToBytes(gameover_wav)
-	joinData = decodeToBytes(join_wav)
-	suikajoinData = decodeToBytes(suikajoin_wav)
+	muted            bool
 }
 
-// decodeToBytes decodes WAV data to PCM bytes
+var defaultManager *Manager
+
+func init() {
+	defaultManager = NewManager()
+}
+
+func NewManager() *Manager {
+	ctx := audio.NewContext(sampleRate)
+
+	backgroundStream, err := wav.DecodeF32(bytes.NewReader(backgroundWAV))
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	loopStream := audio.NewInfiniteLoop(backgroundStream, backgroundStream.Length())
+	bgPlayer, err := ctx.NewPlayerF32(loopStream)
+	if err != nil {
+		log.Fatal(err)
+	}
+	bgPlayer.SetVolume(0.3)
+
+	return &Manager{
+		context:          ctx,
+		backgroundPlayer: bgPlayer,
+		gameoverData:     decodeToBytes(gameoverWAV),
+		joinData:         decodeToBytes(joinWAV),
+		suikajoinData:    decodeToBytes(suikajoinWAV),
+		muted:            false,
+	}
+}
+
 func decodeToBytes(wavData []byte) []byte {
 	stream, err := wav.DecodeF32(bytes.NewReader(wavData))
 	if err != nil {
@@ -68,53 +75,75 @@ func decodeToBytes(wavData []byte) []byte {
 	return data
 }
 
-// SetMuted sets the global mute state
-func SetMuted(muted bool) {
-	Muted = muted
+func (m *Manager) SetMuted(muted bool) {
+	m.muted = muted
 	if muted {
-		StopBackgroundMusic()
+		m.StopBackgroundMusic()
 	} else {
-		StartBackgroundMusic()
+		m.StartBackgroundMusic()
 	}
 }
 
-// PlayGameOver plays the game over sound
+func (m *Manager) IsMuted() bool {
+	return m.muted
+}
+
+func (m *Manager) PlayGameOver() {
+	if m.muted {
+		return
+	}
+	player := m.context.NewPlayerF32FromBytes(m.gameoverData)
+	player.Play()
+}
+
+func (m *Manager) PlayJoin() {
+	if m.muted {
+		return
+	}
+	player := m.context.NewPlayerF32FromBytes(m.joinData)
+	player.Play()
+}
+
+func (m *Manager) PlaySuikaJoin() {
+	if m.muted {
+		return
+	}
+	player := m.context.NewPlayerF32FromBytes(m.suikajoinData)
+	player.Play()
+}
+
+func (m *Manager) StartBackgroundMusic() {
+	if m.backgroundPlayer != nil && !m.backgroundPlayer.IsPlaying() {
+		m.backgroundPlayer.Play()
+	}
+}
+
+func (m *Manager) StopBackgroundMusic() {
+	if m.backgroundPlayer != nil && m.backgroundPlayer.IsPlaying() {
+		m.backgroundPlayer.Pause()
+	}
+}
+
+func SetMuted(muted bool) {
+	defaultManager.SetMuted(muted)
+}
+
 func PlayGameOver() {
-	if Muted {
-		return
-	}
-	player := AudioContext.NewPlayerF32FromBytes(gameoverData)
-	player.Play()
+	defaultManager.PlayGameOver()
 }
 
-// PlayJoin plays the join sound when fruits merge
 func PlayJoin() {
-	if Muted {
-		return
-	}
-	player := AudioContext.NewPlayerF32FromBytes(joinData)
-	player.Play()
+	defaultManager.PlayJoin()
 }
 
-// PlaySuikaJoin plays the special sound when melon or watermelon merge
 func PlaySuikaJoin() {
-	if Muted {
-		return
-	}
-	player := AudioContext.NewPlayerF32FromBytes(suikajoinData)
-	player.Play()
+	defaultManager.PlaySuikaJoin()
 }
 
-// StartBackgroundMusic starts playing the background music
 func StartBackgroundMusic() {
-	if BackgroundPlayer != nil && !BackgroundPlayer.IsPlaying() {
-		BackgroundPlayer.Play()
-	}
+	defaultManager.StartBackgroundMusic()
 }
 
-// StopBackgroundMusic stops the background music
 func StopBackgroundMusic() {
-	if BackgroundPlayer != nil && BackgroundPlayer.IsPlaying() {
-		BackgroundPlayer.Pause()
-	}
+	defaultManager.StopBackgroundMusic()
 }

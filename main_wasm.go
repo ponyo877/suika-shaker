@@ -13,46 +13,49 @@ import (
 	"github.com/ponyo877/suika-shaker/assets/sound"
 )
 
-var (
-	accelerationX float64
-	accelerationY float64
-	accelerationZ float64
-)
+type AccelerationData struct {
+	X, Y, Z float64
+}
+
+var accelData AccelerationData
 
 func setupWASMCallbacks() {
-	js.Global().Set("setAcceleration", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
-		if len(args) >= 3 {
-			accelerationX = args[0].Float()
-			accelerationY = args[1].Float()
-			accelerationZ = args[2].Float()
-		}
-		return nil
-	}))
+	js.Global().Set("setAcceleration", js.FuncOf(setAccelerationCallback))
+	js.Global().Set("startGameFromJS", js.FuncOf(startGameCallback))
+	js.Global().Set("startAudioContext", js.FuncOf(startAudioCallback))
+}
 
-	js.Global().Set("startGameFromJS", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
-		if currentGame != nil {
-			currentGame.showTitleScreen = false
+func setAccelerationCallback(this js.Value, args []js.Value) interface{} {
+	if len(args) >= 3 {
+		accelData.X = args[0].Float()
+		accelData.Y = args[1].Float()
+		accelData.Z = args[2].Float()
+	}
+	return nil
+}
 
-			if js.Global().Get("onGameStarted").Truthy() {
-				js.Global().Call("onGameStarted")
-			}
+func startGameCallback(this js.Value, args []js.Value) interface{} {
+	if currentGame != nil {
+		currentGame.state.ShowTitleScreen = false
+		if js.Global().Get("onGameStarted").Truthy() {
+			js.Global().Call("onGameStarted")
 		}
-		return nil
-	}))
+	}
+	return nil
+}
 
-	js.Global().Set("startAudioContext", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
-		if currentGame != nil && !currentGame.muted {
-			sound.StartBackgroundMusic()
-		}
-		return nil
-	}))
+func startAudioCallback(this js.Value, args []js.Value) interface{} {
+	if currentGame != nil && !currentGame.state.IsMuted() {
+		sound.StartBackgroundMusic()
+	}
+	return nil
 }
 
 func getAcceleration() (float64, float64, float64) {
-	return accelerationX, accelerationY, accelerationZ
+	return accelData.X, accelData.Y, accelData.Z
 }
 
-func shareGameResultToX(screenshot *ebiten.Image, score int, watermelonHits int) {
+func shareGameResultToX(screenshot *ebiten.Image, score, watermelonHits int) {
 	if screenshot == nil {
 		return
 	}
@@ -63,9 +66,12 @@ func shareGameResultToX(screenshot *ebiten.Image, score int, watermelonHits int)
 	}
 
 	base64Image := base64.StdEncoding.EncodeToString(buf.Bytes())
-
-	url := "https://ponyo877.github.io/suika-shaker/"
-	shareText := fmt.Sprintf("Suika Shaker\nScore: %d\nWatermelon Hits: %d\n%s", score, watermelonHits, url)
+	shareText := fmt.Sprintf(
+		"Suika Shaker\nScore: %d\nWatermelon Hits: %d\n%s",
+		score,
+		watermelonHits,
+		"https://ponyo877.github.io/suika-shaker/",
+	)
 
 	if js.Global().Get("showShareButton").Truthy() {
 		js.Global().Call("showShareButton", base64Image, shareText)

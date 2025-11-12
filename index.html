@@ -53,6 +53,43 @@
         #permissionBtn:hover {
             background-color: #45a049;
         }
+
+        .game-button {
+            position: absolute;
+            color: white;
+            border: none;
+            cursor: pointer;
+            z-index: 1000;
+            outline: none;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        #startButton {
+            display: none;
+            background-color: rgba(200, 90, 84, 1);
+            border-radius: 15px;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Helvetica', 'Arial', sans-serif;
+            font-weight: bold;
+            font-size: 28px;
+        }
+
+        #shareButton {
+            display: none;
+            background-color: rgba(150, 200, 200, 1);
+            border-radius: 50%;
+            padding: 0;
+            overflow: hidden;
+        }
+
+        #shareButton img {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 60%;
+            height: 60%;
+            object-fit: contain;
+        }
     </style>
 </head>
 
@@ -60,75 +97,61 @@
     <div id="gameContainer">
         <div id="loading" style="color: white;">Loading...</div>
         <button id="permissionBtn">Enable Motion Sensor</button>
-
-        <button id="startButton" style="
-            position: absolute;
-            display: none;
-            background-color: rgba(200, 90, 84, 1);
-            color: white;
-            border: none;
-            border-radius: 15px;
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Helvetica', 'Arial', sans-serif;
-            font-weight: bold;
-            font-size: 28px;
-            cursor: pointer;
-            z-index: 1000;
-            outline: none;
-            -webkit-tap-highlight-color: transparent;
-        ">START</button>
-
-        <button id="shareButton" style="
-            position: absolute;
-            display: none;
-            background-color: rgba(150, 200, 200, 1);
-            color: white;
-            border: none;
-            border-radius: 50%;
-            cursor: pointer;
-            z-index: 1000;
-            outline: none;
-            -webkit-tap-highlight-color: transparent;
-            padding: 0;
-            overflow: hidden;
-        ">
-            <img src="assets/image/share.png"
-                style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 60%; height: 60%; object-fit: contain;">
+        <button id="startButton" class="game-button">START</button>
+        <button id="shareButton" class="game-button">
+            <img src="assets/image/share.png">
         </button>
     </div>
 
     <script src="wasm_exec.js"></script>
     <script>
+        const GAME_WIDTH = 480;
+        const GAME_HEIGHT = 800;
+        const MAX_SCALE = 2.0;
+        const SETUP_RETRY_DELAY = 100;
+        const MAX_SETUP_RETRIES = 100;
+
+        const START_BUTTON_POS = { x: 125, y: 600, width: 230, height: 50 };
+        const SHARE_BUTTON_POS = { x: 333, y: 530, width: 60, height: 60 };
+
+        const GAME_URL = 'https://ponyo877.github.io/suika-shaker/';
+        const GAME_HASHTAG = '#SuikaShaker';
+
         let wasmReady = false;
-        const isWithRequestPermission =
-            typeof unknownDeviceMotionEvent === 'function' &&
-            unknownDeviceMotionEvent !== null &&
-            'requestPermission' in unknownDeviceMotionEvent &&
-            typeof unknownDeviceMotionEvent.requestPermission === 'function'
-        const isIOS = isWithRequestPermission;
+        let gameScreenshotData = null;
+        let gameShareText = null;
+
+        const isIOSWithPermission = typeof DeviceMotionEvent === 'function' &&
+            DeviceMotionEvent !== null &&
+            'requestPermission' in DeviceMotionEvent &&
+            typeof DeviceMotionEvent.requestPermission === 'function';
         const isAndroid = /android/i.test(navigator.userAgent);
 
-        const go = new Go();
-        WebAssembly.instantiateStreaming(fetch("main.wasm"), go.importObject).then((result) => {
-            document.getElementById("loading").style.display = "none";
-            wasmReady = true;
-            go.run(result.instance);
-
-            setupTapEvent();
-            setupShareButton();
-        }).catch(() => {
-            document.getElementById("loading").innerHTML = "Failed to load game. Please refresh the page.";
-        });
+        function initWASM() {
+            const go = new Go();
+            WebAssembly.instantiateStreaming(fetch("main.wasm"), go.importObject)
+                .then((result) => {
+                    document.getElementById("loading").style.display = "none";
+                    wasmReady = true;
+                    go.run(result.instance);
+                    setupStartButton();
+                    setupShareButton();
+                })
+                .catch(() => {
+                    document.getElementById("loading").innerHTML = "Failed to load game. Please refresh the page.";
+                });
+        }
 
         function startMotionListener() {
             window.addEventListener('devicemotion', (event) => {
-                if (!wasmReady) return;
-                if (!event.accelerationIncludingGravity) return;
+                if (!wasmReady || !event.accelerationIncludingGravity) return;
 
-                let x = event.accelerationIncludingGravity.x || 0;
-                let y = event.accelerationIncludingGravity.y || 0;
-                let z = event.accelerationIncludingGravity.z || 0;
+                let { x, y, z } = event.accelerationIncludingGravity;
+                x = x || 0;
+                y = y || 0;
+                z = z || 0;
 
-                if (isIOS || isAndroid) {
+                if (isAndroid) {
                     x = -x;
                     y = -y;
                     z = -z;
@@ -140,222 +163,191 @@
             });
         }
 
-        window.shareToX = async function (base64Image, shareText) {
-            try {
-                if (!navigator.share) {
-                    alert('お使いのブラウザはシェア機能に対応していません。');
-                    return;
-                }
-
-                const byteString = atob(base64Image);
-                const ab = new ArrayBuffer(byteString.length);
-                const ia = new Uint8Array(ab);
-                for (let i = 0; i < byteString.length; i++) {
-                    ia[i] = byteString.charCodeAt(i);
-                }
-                const blob = new Blob([ab], { type: 'image/png' });
-
-                const file = new File([blob], 'suika-shaker-result.png', { type: 'image/png' });
-
-                const shareData = {
-                    text: shareText + '\n\n#SuikaShaker',
-                    files: [file]
-                };
-
-                if (!navigator.canShare) {
-                    alert('お使いのブラウザはシェア機能に対応していません。');
-                } else if (!navigator.canShare(shareData)) {
-                    alert('このデータはシェアできません。');
-                    return;
-                }
-
-                await navigator.share(shareData);
-
-            } catch (error) {
-                if (error.name === 'AbortError') {
-                } else if (error.name === 'NotAllowedError') {
-                    alert('シェア機能へのアクセスが拒否されました。');
-                } else {
-                    alert('シェアに失敗しました: ' + error.message);
-                }
-            }
-        };
-
-        window.gameScreenshotData = null;
-        window.gameShareText = null;
-
         function calculateButtonPosition(canvas, gameX, gameY, gameWidth, gameHeight) {
             const rect = canvas.getBoundingClientRect();
-
-            const GAME_WIDTH = 480;
-            const GAME_HEIGHT = 800;
-
             const scaleX = rect.width / GAME_WIDTH;
             const scaleY = rect.height / GAME_HEIGHT;
-
-            const scale = Math.min(scaleX, scaleY, 2.0);
+            const scale = Math.min(scaleX, scaleY, MAX_SCALE);
 
             const buttonWidth = gameWidth * scale;
             const buttonHeight = gameHeight * scale;
-
             const scaledGameX = gameX * scale;
             const scaledGameY = gameY * scale;
 
             const canvasOffsetX = (rect.width - GAME_WIDTH * scale) / 2;
             const canvasOffsetY = (rect.height - GAME_HEIGHT * scale) / 2;
 
-            const buttonLeft = rect.left + canvasOffsetX + scaledGameX;
-            const buttonTop = rect.top + canvasOffsetY + scaledGameY;
-
             return {
-                left: buttonLeft,
-                top: buttonTop,
+                left: rect.left + canvasOffsetX + scaledGameX,
+                top: rect.top + canvasOffsetY + scaledGameY,
                 width: buttonWidth,
-                height: buttonHeight,
-                scale: scale
+                height: buttonHeight
             };
         }
 
-        function setupShareButton() {
-            let retryCount = 0;
-            const maxRetries = 100;
+        function positionButton(button, canvas, position) {
+            const pos = calculateButtonPosition(canvas, position.x, position.y, position.width, position.height);
+            button.style.left = pos.left + 'px';
+            button.style.top = pos.top + 'px';
+            button.style.width = pos.width + 'px';
+            button.style.height = pos.height + 'px';
+        }
 
-            function trySetup() {
+        function setupStartButton() {
+            retrySetup(() => {
                 const canvas = document.querySelector('canvas');
-                if (!canvas) {
-                    retryCount++;
-                    if (retryCount < maxRetries) {
-                        setTimeout(trySetup, 100);
-                    }
-                    return;
-                }
+                const startButton = document.getElementById('startButton');
+                if (!canvas || !startButton) return false;
 
+                const updatePosition = () => positionButton(startButton, canvas, START_BUTTON_POS);
+                updatePosition();
+                startButton.style.display = 'block';
+
+                window.onGameStarted = () => startButton.style.display = 'none';
+                window.onTitleScreen = () => {
+                    startButton.style.display = 'block';
+                    updatePosition();
+                };
+
+                startButton.addEventListener('click', handleStartButtonClick);
+                window.addEventListener('resize', updatePosition);
+
+                return true;
+            });
+        }
+
+        function handleStartButtonClick() {
+            if (!wasmReady) {
+                alert('ゲームを読み込み中です。少々お待ちください。');
+                return;
+            }
+
+            if (isIOSWithPermission) {
+                DeviceMotionEvent.requestPermission()
+                    .then(permission => {
+                        if (permission === 'granted') {
+                            startMotionListener();
+                            startGame();
+                        } else {
+                            alert('センサーへのアクセスが拒否されました。ゲームをプレイできません。');
+                        }
+                    })
+                    .catch(error => {
+                        alert('センサーへのアクセス要求に失敗しました: ' + error.message);
+                    });
+            } else {
+                startMotionListener();
+                startGame();
+            }
+        }
+
+        function startGame() {
+            try {
+                if (window.startAudioContext) {
+                    window.startAudioContext();
+                }
+            } catch (error) {
+                console.error('Failed to start audio context:', error);
+            }
+
+            if (window.startGameFromJS) {
+                window.startGameFromJS();
+            }
+        }
+
+        function setupShareButton() {
+            retrySetup(() => {
+                const canvas = document.querySelector('canvas');
                 const shareButton = document.getElementById('shareButton');
-                if (!shareButton) {
-                    return;
-                }
+                if (!canvas || !shareButton) return false;
 
-                function positionShareButton() {
-                    const pos = calculateButtonPosition(canvas, 333, 530, 60, 60);
+                const updatePosition = () => positionButton(shareButton, canvas, SHARE_BUTTON_POS);
 
-                    shareButton.style.left = pos.left + 'px';
-                    shareButton.style.top = pos.top + 'px';
-                    shareButton.style.width = pos.width + 'px';
-                    shareButton.style.height = pos.height + 'px';
-                }
-
-                window.showShareButton = function (base64Image, shareText) {
-                    window.gameScreenshotData = base64Image;
-                    window.gameShareText = shareText;
-                    positionShareButton();
+                window.showShareButton = (base64Image, shareText) => {
+                    gameScreenshotData = base64Image;
+                    gameShareText = shareText;
+                    updatePosition();
                     shareButton.style.display = 'block';
                 };
 
-                window.hideShareButton = function () {
+                window.hideShareButton = () => {
                     shareButton.style.display = 'none';
-                    window.gameScreenshotData = null;
-                    window.gameShareText = null;
+                    gameScreenshotData = null;
+                    gameShareText = null;
                 };
 
-                shareButton.addEventListener('click', async function (e) {
-                    if (!window.gameScreenshotData || !window.gameShareText) {
-                        alert('スクリーンショットデータがありません。');
-                        return;
-                    }
+                shareButton.addEventListener('click', handleShareButtonClick);
+                window.addEventListener('resize', updatePosition);
 
-                    await window.shareToX(window.gameScreenshotData, window.gameShareText);
-                });
-
-                window.addEventListener('resize', positionShareButton);
-            }
-
-            trySetup();
+                return true;
+            });
         }
 
-        function setupTapEvent() {
+        async function handleShareButtonClick() {
+            if (!gameScreenshotData || !gameShareText) {
+                alert('スクリーンショットデータがありません。');
+                return;
+            }
+
+            try {
+                if (!navigator.share) {
+                    alert('お使いのブラウザはシェア機能に対応していません。');
+                    return;
+                }
+
+                const blob = base64ToBlob(gameScreenshotData);
+                const file = new File([blob], 'suika-shaker-result.png', { type: 'image/png' });
+                const shareData = {
+                    text: gameShareText + '\n\n' + GAME_HASHTAG,
+                    files: [file]
+                };
+
+                if (!navigator.canShare || !navigator.canShare(shareData)) {
+                    alert('このデータはシェアできません。');
+                    return;
+                }
+
+                await navigator.share(shareData);
+            } catch (error) {
+                if (error.name === 'AbortError') {
+                    return;
+                }
+                if (error.name === 'NotAllowedError') {
+                    alert('シェア機能へのアクセスが拒否されました。');
+                } else {
+                    alert('シェアに失敗しました: ' + error.message);
+                }
+            }
+        }
+
+        function base64ToBlob(base64) {
+            const byteString = atob(base64);
+            const ab = new ArrayBuffer(byteString.length);
+            const ia = new Uint8Array(ab);
+            for (let i = 0; i < byteString.length; i++) {
+                ia[i] = byteString.charCodeAt(i);
+            }
+            return new Blob([ab], { type: 'image/png' });
+        }
+
+        function retrySetup(setupFn) {
             let retryCount = 0;
-            const maxRetries = 100;
 
             function trySetup() {
-                const canvas = document.querySelector('canvas');
-                if (!canvas) {
-                    retryCount++;
-                    if (retryCount < maxRetries) {
-                        setTimeout(trySetup, 100);
-                    }
+                if (setupFn()) {
                     return;
                 }
 
-                const startButton = document.getElementById('startButton');
-                if (!startButton) {
-                    return;
+                retryCount++;
+                if (retryCount < MAX_SETUP_RETRIES) {
+                    setTimeout(trySetup, SETUP_RETRY_DELAY);
                 }
-
-                function positionButton() {
-                    const pos = calculateButtonPosition(canvas, 125, 600, 230, 50);
-
-                    startButton.style.left = pos.left + 'px';
-                    startButton.style.top = pos.top + 'px';
-                    startButton.style.width = pos.width + 'px';
-                    startButton.style.height = pos.height + 'px';
-                }
-
-                positionButton();
-                startButton.style.display = 'block';
-
-                window.onGameStarted = function () {
-                    startButton.style.display = 'none';
-                };
-
-                window.onTitleScreen = function () {
-                    startButton.style.display = 'block';
-                    positionButton();
-                };
-
-                function startAudioAndGame() {
-                    try {
-                        if (window.startAudioContext) {
-                            window.startAudioContext();
-                        }
-                    } catch (error) {
-                    }
-
-                    if (window.startGameFromJS) {
-                        window.startGameFromJS();
-                    }
-                }
-
-                startButton.addEventListener('click', function (e) {
-                    if (!wasmReady) {
-                        alert('ゲームを読み込み中です。少々お待ちください。');
-                        return;
-                    }
-
-                    if (typeof DeviceMotionEvent.requestPermission === 'function') {
-                        DeviceMotionEvent.requestPermission()
-                            .then(permission => {
-                                if (permission === 'granted') {
-                                    startMotionListener();
-                                    startAudioAndGame();
-                                } else {
-                                    alert('センサーへのアクセスが拒否されました。ゲームをプレイできません。');
-                                }
-                            })
-                            .catch(error => {
-                                alert('センサーへのアクセス要求に失敗しました: ' + error.message);
-                            });
-                    } else {
-                        startMotionListener();
-                        startAudioAndGame();
-                    }
-                });
-
-                window.addEventListener('resize', positionButton);
             }
 
             trySetup();
         }
 
+        initWASM();
     </script>
 </body>
 

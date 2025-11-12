@@ -27,30 +27,30 @@ const (
 
 var (
 	//go:embed grape.png
-	grape_png []byte
+	grapePNG []byte
 	//go:embed mandarin.png
-	mandarin_png []byte
+	mandarinPNG []byte
 	//go:embed apple.png
-	apple_png []byte
+	applePNG []byte
 	//go:embed pear.png
-	pear_png []byte
+	pearPNG []byte
 	//go:embed peach.png
-	peach_png []byte
+	peachPNG []byte
 	//go:embed pineapple.png
-	pineapple_png []byte
+	pineapplePNG []byte
 	//go:embed melon.png
-	melon_png []byte
+	melonPNG []byte
 	//go:embed watermelon.png
-	watermelon_png []byte
+	watermelonPNG []byte
 
 	//go:embed speaker.png
-	speaker_png []byte
+	speakerPNG []byte
 	//go:embed muted.png
-	muted_png []byte
+	mutedPNG []byte
 	//go:embed share.png
-	share_png []byte
+	sharePNG []byte
 	//go:embed titlelogo.png
-	titlelogo_png []byte
+	titlelogoPNG []byte
 
 	assets map[Kind]ImageSet
 	icons  map[IconKind]*ebiten.Image
@@ -87,55 +87,53 @@ type ImageSet struct {
 }
 
 func init() {
-	grapePngImage, grapeImage := loadImage(grape_png)
-	mandarinPngImage, mandarinImage := loadImage(mandarin_png)
-	applePngImage, appleImage := loadImage(apple_png)
-	pearPngImage, pearImage := loadImage(pear_png)
-	peachPngImage, peachImage := loadImage(peach_png)
-	pineapplePngImage, pineappleImage := loadImage(pineapple_png)
-	melonPngImage, melonImage := loadImage(melon_png)
-	watermelonPngImage, watermelonImage := loadImage(watermelon_png)
+	grapeImg, grapeEbiten := decodeImage(grapePNG)
+	mandarinImg, mandarinEbiten := decodeImage(mandarinPNG)
+	appleImg, appleEbiten := decodeImage(applePNG)
+	pearImg, pearEbiten := decodeImage(pearPNG)
+	peachImg, peachEbiten := decodeImage(peachPNG)
+	pineappleImg, pineappleEbiten := decodeImage(pineapplePNG)
+	melonImg, melonEbiten := decodeImage(melonPNG)
+	watermelonImg, watermelonEbiten := decodeImage(watermelonPNG)
 
 	assets = map[Kind]ImageSet{
-		Grape:      makeImageSet(grapeImage, grapePngImage, 1.0, 10),
-		Mandarin:   makeImageSet(mandarinImage, mandarinPngImage, 1.0, 20),
-		Apple:      makeImageSet(appleImage, applePngImage, 1.0, 60),
-		Pear:       makeImageSet(pearImage, pearPngImage, 1.0, 70),
-		Peach:      makeImageSet(peachImage, peachPngImage, 1.0, 80),
-		Pineapple:  makeImageSet(pineappleImage, pineapplePngImage, 1.0, 90),
-		Melon:      makeImageSet(melonImage, melonPngImage, 1.0, 100),
-		Watermelon: makeImageSet(watermelonImage, watermelonPngImage, 1.0, 110),
+		Grape:      newImageSet(grapeImg, grapeEbiten, 1.0, 10),
+		Mandarin:   newImageSet(mandarinImg, mandarinEbiten, 1.0, 20),
+		Apple:      newImageSet(appleImg, appleEbiten, 1.0, 60),
+		Pear:       newImageSet(pearImg, pearEbiten, 1.0, 70),
+		Peach:      newImageSet(peachImg, peachEbiten, 1.0, 80),
+		Pineapple:  newImageSet(pineappleImg, pineappleEbiten, 1.0, 90),
+		Melon:      newImageSet(melonImg, melonEbiten, 1.0, 100),
+		Watermelon: newImageSet(watermelonImg, watermelonEbiten, 1.0, 110),
 	}
 
-	// Load icons (only need EbitenImage, not image.Image for physics)
-	_, speakerImage := loadImage(speaker_png)
-	_, mutedImage := loadImage(muted_png)
-	_, shareImage := loadImage(share_png)
-	_, titleLogoImage := loadImage(titlelogo_png)
+	_, speakerEbiten := decodeImage(speakerPNG)
+	_, mutedEbiten := decodeImage(mutedPNG)
+	_, shareEbiten := decodeImage(sharePNG)
+	_, titleLogoEbiten := decodeImage(titlelogoPNG)
 
 	icons = map[IconKind]*ebiten.Image{
-		Speaker:   speakerImage,
-		Muted:     mutedImage,
-		Share:     shareImage,
-		TitleLogo: titleLogoImage,
+		Speaker:   speakerEbiten,
+		Muted:     mutedEbiten,
+		Share:     shareEbiten,
+		TitleLogo: titleLogoEbiten,
 	}
 }
 
-func loadImage(b []byte) (image.Image, *ebiten.Image) {
-	img, _, err := image.Decode(bytes.NewReader(b))
+func decodeImage(data []byte) (image.Image, *ebiten.Image) {
+	img, _, err := image.Decode(bytes.NewReader(data))
 	if err != nil {
 		log.Fatal(err)
 	}
-	ebitenImage := ebiten.NewImageFromImage(img)
-	return img, ebitenImage
+	return img, ebiten.NewImageFromImage(img)
 }
 
-func Get(tp Kind) ImageSet {
-	is, ok := assets[tp]
+func Get(kind Kind) ImageSet {
+	imageSet, ok := assets[kind]
 	if !ok {
-		log.Fatalf("image %d not found", tp)
+		log.Fatalf("image %d not found", kind)
 	}
-	return is
+	return imageSet
 }
 
 func GetIcon(kind IconKind) *ebiten.Image {
@@ -150,55 +148,57 @@ func Length() int {
 	return len(assets)
 }
 
-func Exists(tp Kind) bool {
-	return tp >= Min && tp <= Max
+func Exists(kind Kind) bool {
+	return kind >= Min && kind <= Max
 }
 
-func ForEach(f func(Kind, ImageSet)) {
-	for i, v := range assets {
-		f(i, v)
+func ForEach(fn func(Kind, ImageSet)) {
+	for k, v := range assets {
+		fn(k, v)
 	}
 }
 
-func makeImageSet(
-	ebitenImage *ebiten.Image,
-	image image.Image,
-	scale float64,
-	score int,
-) ImageSet {
-	is := ImageSet{
-		EbitenImage: ebitenImage,
-		Image:       image,
+func newImageSet(img image.Image, ebitenImg *ebiten.Image, scale float64, score int) ImageSet {
+	return ImageSet{
+		EbitenImage: ebitenImg,
+		Image:       img,
 		Scale:       scale,
-		Vectors:     makeVector(image, scale),
+		Vectors:     generateVectors(img, scale),
 		Score:       score,
 	}
-	return is
 }
 
-func makeVector(img image.Image, scale float64) []cp.Vector {
-	b := img.Bounds()
-	bb := cp.BB{L: float64(b.Min.X), B: float64(b.Min.Y), R: float64(b.Max.X), T: float64(b.Max.Y)}
+func generateVectors(img image.Image, scale float64) []cp.Vector {
+	bounds := img.Bounds()
+	bb := cp.BB{
+		L: float64(bounds.Min.X),
+		B: float64(bounds.Min.Y),
+		R: float64(bounds.Max.X),
+		T: float64(bounds.Max.Y),
+	}
 
 	sampleFunc := func(point cp.Vector) float64 {
-		x := point.X
-		y := point.Y
+		x, y := int(point.X), int(point.Y)
 		rect := img.Bounds()
 
-		if x < float64(rect.Min.X) || x > float64(rect.Max.X) || y < float64(rect.Min.Y) || y > float64(rect.Max.Y) {
+		if x < rect.Min.X || x > rect.Max.X || y < rect.Min.Y || y > rect.Max.Y {
 			return 0.0
 		}
-		_, _, _, a := img.At(int(x), int(y)).RGBA()
+		_, _, _, a := img.At(x, y).RGBA()
 		return float64(a) / 0xffff
 	}
 
 	lineSet := cp.MarchSoft(bb, 300, 300, 0.5, cp.PolyLineCollectSegment, sampleFunc)
-
 	line := lineSet.Lines[0].SimplifyCurves(.9)
-	offset := cp.Vector{X: float64(b.Max.X-b.Min.X) / 2., Y: float64(b.Max.Y-b.Min.Y) / 2.}
-	// center the verts on origin
-	for i, l := range line.Verts {
-		line.Verts[i] = l.Sub(offset).Mult(scale)
+
+	offset := cp.Vector{
+		X: float64(bounds.Max.X-bounds.Min.X) / 2.0,
+		Y: float64(bounds.Max.Y-bounds.Min.Y) / 2.0,
 	}
+
+	for i, vertex := range line.Verts {
+		line.Verts[i] = vertex.Sub(offset).Mult(scale)
+	}
+
 	return line.Verts
 }
